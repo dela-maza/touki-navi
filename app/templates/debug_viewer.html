@@ -1,0 +1,74 @@
+<!--app/templates/article/debug_viewer.html-->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>登記ナビ Debug Viewer</title>
+    <style>
+        body { margin: 0; display: flex; flex-direction: column; height: 100vh; font-family: 'Helvetica Neue', Arial, sans-serif; }
+        header { background: #2c3e50; color: white; padding: 1rem 2rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        main { display: flex; flex: 1; overflow: hidden; }
+
+        /* 30% 目次エリア */
+        .toc-sidebar { width: 30%; background: #fdfdfd; border-right: 1px solid #e0e0e0; overflow-y: auto; padding: 1.5rem; }
+        /* 70% 条文エリア */
+        .article-content { width: 70%; background: #ffffff; overflow-y: auto; padding: 3rem; }
+
+        .article-title { font-size: 1.5rem; font-weight: bold; margin-bottom: 2rem; border-bottom: 3px solid #2c3e50; padding-bottom: 0.5rem; }
+        .element-unit { margin-bottom: 2rem; }
+        .sentence-item { display: block; margin-bottom: 0.8rem; line-height: 1.8; color: #333; }
+
+        /* 解決済みタグのスタイル（デバッグ用） */
+        .resolved-tag {
+            display: inline-block;
+            background: #eef9ff;
+            border: 1px solid #3498db;
+            border-radius: 4px;
+            padding: 0 5px;
+            color: #2980b9;
+            font-size: 1.3em;
+            margin: 0 2px;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <strong>登記ナビ v1.0 - 解析エンジン検証</strong>
+</header>
+
+<main>
+    <aside class="toc-sidebar">
+        <h3>構造目次</h3>
+        <small>（ここに項・号のリストを並べる）</small>
+    </aside>
+
+   <article class="article-content">
+    <h1>{{ law_name }} 全条文確認</h1>
+
+    {% for article in articles %}
+        <section class="article-container" style="margin-bottom: 4rem; border-top: 1px solid #eee; pt-4;">
+            <div class="article-title" id="art-{{ article.num }}">
+                <strong>第{{ article.num }}条</strong> {% if article.title %}（{{ article.title }}）{% endif %}
+            </div>
+
+            {% for el in article.paragraphs %}
+                <div class="element-unit">
+                    {% if el.num != "1" or el.depth.name != "PARAGRAPH" %}
+                        <strong>（{{ el.num }}）</strong>
+                    {% endif %}
+
+                    {% for s in el.sentences %}
+                        <span class="sentence-item">
+                            {{ s.resolved_text | safe }}
+                        </span>
+                    {% endfor %}
+                </div>
+            {% endfor %}
+        </section>
+    {% endfor %}
+</article>
+</main>
+
+</body>
+</html>

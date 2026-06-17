@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Debug - {{ law_name }}</title>
+    <style>
+        body {
+            background-color: #f0f0f0;
+            font-family: "Consolas", "Monaco", "Courier New", monospace;
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        header {
+            padding: 10px 20px;
+            background-color: #fff;
+            border-bottom: 1px solid #ccc;
+        }
+        h1 {
+            color: #333;
+            font-size: 20px;
+            margin: 0;
+            border-left: 5px solid #666;
+            padding-left: 15px;
+        }
+        /* Flexコンテナで左右分割 */
+        .main-container {
+            display: flex;
+            flex: 1; /* 残りの高さをすべて使う */
+            overflow: hidden; /* 親はスクロールさせない */
+        }
+        /* 左：目次（30%） */
+        .toc-pane {
+            flex: 0 0 30%;
+            background-color: #e8e8e8;
+            border-right: 2px solid #ccc;
+            overflow-y: auto; /* ここだけスクロール */
+            padding: 20px;
+        }
+        /* 右：条文（70%） */
+        .content-pane {
+            flex: 0 0 70%;
+            background-color: #f0f0f0;
+            overflow-y: auto; /* ここだけスクロール */
+            padding: 20px;
+        }
+        pre {
+            background-color: #ffffff;
+            color: #222;
+            padding: 15px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            white-space: pre-wrap;
+            font-size: 14px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        .pane-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #666;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>パース結果デバッグ出力: {{ law_name }}</h1>
+    </header>
+
+    <div class="main-container">
+        <div class="toc-pane">
+            <div class="pane-title">Table of Contents (JSON)</div>
+            <pre>{{ toc_json }}</pre>
+        </div>
+
+        <div class="content-pane">
+            <div class="pane-title">Articles (JSON)</div>
+            <pre>{{ articles_json }}</pre>
+        </div>
+    </div>
+</body>
+</html>
