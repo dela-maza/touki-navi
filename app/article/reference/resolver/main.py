@@ -1,5 +1,7 @@
 #reference/resolver/main.py
 import re
+
+from app.article.models.article_loc import FullLocation
 from app.article.reference.resolver.token import TokenGroup
 
 
@@ -8,24 +10,24 @@ class ReferenceResolver:
     リンク文字列 [[...]] を解析し、HTMLタグへ置換する司令塔。
     """
 
-    def __init__(self, start_location):
+    def __init__(self, cur_location:FullLocation):
         # 座標の初期値を保持
-        self.location = start_location
+        self.cur_location = cur_location  # 100条（不変）
+        self.last_ref_location = cur_location  # 初期値は100条（変動）
 
     def _handle_group(self, match: re.Match) -> str:
         raw_segment = match.group(0)
         try:
-            # TokenGroup を生成（この中で座標が計算される）
-            group = TokenGroup(raw_segment, self.location)
+            # 💡 TokenGroup に「真の現在地」と「直近の参照」の双方を叩き込む
+            group = TokenGroup(raw_segment, self.cur_location, self.last_ref_location)
 
-            # 次のリンクのために現在地を更新
-            self.location = group.final_location
+            # 次のトークンのために、変動する文脈（111条など）を更新して記憶
+            self.last_ref_location = group.final_last_ref
 
-            # 置換後の文字列（HTML）を返す
-            return group.to_resolved_string()
+            # 💡 双方の可能性のID（id_attr）を抱えた特殊なタグ、または構造を返す
+            return group.to_resolved_string_with_options()
 
         except Exception as e:
-            # エラー時は原本を返し、画面が壊れるのを防ぐ
             print(f"Resolver Error: {e}")
             return raw_segment
 

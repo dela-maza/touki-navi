@@ -30,3 +30,4 @@ class Sentence:
             "resolved_text": self.resolved_text,
             "sentence_type": self.sentence_type
         }
+{[会社法][第一条][第一項][第一号][イ][（１）]|[会社法][第1条][第1項][第1号][イ][（１）]|[kai.1.1.1.1.1]}
