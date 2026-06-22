@@ -1,7 +1,6 @@
 # app/article/reference/chunker.py
 import re
 from app.article.constants.enums import LawType
-𛂁
 
 class ReferenceChunker:
 
@@ -13,8 +12,8 @@ class ReferenceChunker:
 
         # 1. 法律名・同法
         for law in LawType:
-            processed = re.sub(rf"(?<!\[\[){re.escape(law.name_jp)}(?!\]\])",
-                               f"[[{law.name_jp}]]", processed)  # re.escape( ) でパターン中の特殊文字をエスケープ
+            processed = re.sub(rf"(?<!\[\[){re.escape(law.name_jp)}(?!]])",
+                               f"[[{law.name_jp}]]", processed)
         processed = processed.replace("同法", "[[同法]]")
 
         # 2. 条・項・号（絶対指定と相対指定を別々に処理）

@@ -6,7 +6,7 @@ from app.article.constants.enums import LawType, ArticleDepth
 @dataclass(frozen=True)
 class ArticleLocation:
     """
-    一条の中の「相対住所」。
+    一条の中の「相対住所」
     idx_path: (項index, 号index, 細別1index, 細別2index)
     ※インデックスは 0 スタートとする（第1項なら 0）
     """
@@ -18,11 +18,12 @@ class ArticleLocation:
         現在の階層を判定する。
         """
         for i in range(len(self.path) - 1, 0, -1):
+            # path配列の末尾(path配列数-1)から0まで-1ずつ
             if self.path[i] > 0:
                 return ArticleDepth(i)
         return ArticleDepth.PARAGRAPH
 
-    def get_value(self, depth: ArticleDepth) -> int:
+    def get_path_index(self, depth: ArticleDepth) -> int:
         """
         指定された階層の現在のインデックス値を取得する。
         """
@@ -30,10 +31,10 @@ class ArticleLocation:
         # その index プロパティ（0〜3）を使って tuple から値を取り出す
         return self.path[depth.index]
 
-    def set_at(self, depth: ArticleDepth, val: any) -> "ArticleLocation": # int から any へ
-        path_list = list(self.path)
-        target_idx = depth.index
-        path_list[target_idx] = val # カタカナや数値がそのまま入る
+    def set_at(self, depth: ArticleDepth, val: int) -> "ArticleLocation":
+        path_list :list[int]= list(self.path) # tuple -> list
+        target_idx:int  = depth.index
+        path_list[target_idx] = val
 
         # 以降のリセット
         for i in range(target_idx + 1, len(path_list)):
@@ -53,7 +54,11 @@ class FullLocation:
 
     # --- 状態遷移メソッド ---
     @staticmethod
-    def update_law( new_law: LawType) -> "FullLocation": # staticmethodを解除
+    def update_law( new_law: LawType) -> "FullLocation":
+        """
+        law_typeが変わった場合
+        article_num以下をリセット
+        """
         return FullLocation(
             law_type=new_law,
             article_num="0",
@@ -61,7 +66,10 @@ class FullLocation:
         )
 
     def update_article(self, num_str: str) -> "FullLocation":
-        """条が切り替わった場合（項以下をリセット）"""
+        """
+        条が切り替わった場合
+        項以下をリセット
+        """
         return FullLocation(
             self.law_type,
             article_num=num_str,
@@ -70,7 +78,7 @@ class FullLocation:
 
     def update_relative(self, depth: ArticleDepth, val: int) -> "FullLocation":
         """項・号・目が切り替わった場合（ArticleLocationのロジックを使用）"""
-        # 既存の set_at をそのまま活用！
+        # 既存の set_at をそのまま活用
         new_relative = self.relative_loc.set_at(depth, val)
         return FullLocation(
             self.law_type,

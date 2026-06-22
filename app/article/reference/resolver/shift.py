@@ -34,7 +34,7 @@ class LocationShiftResolver:
 
         # 2. 「同項」
         if label == "同項":
-            current_p = self.base_loc.relative_loc.get_value(ArticleDepth.PARAGRAPH)
+            current_p = self.base_loc.relative_loc.get_path_index(ArticleDepth.PARAGRAPH)
             return self.base_loc.update_relative(ArticleDepth.PARAGRAPH, current_p)
 
         # 3. 「前○条」

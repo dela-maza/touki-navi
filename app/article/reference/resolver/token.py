@@ -4,11 +4,12 @@ import re
 from app.article.common.law_utils import kanji_to_id
 from app.article.models.article_loc import ArticleDepth, FullLocation
 
+
 class Token:
     def __init__(self, tag: str, val: str, label: str):
-        self.tag = tag
-        self.val = val
-        self.label = label
+        self.tag = tag  # "a"
+        self.val = val  # "-1"
+        self.label = label  # "前条"
 
     @classmethod
     def parse(cls, raw_content: str) -> "Token":
@@ -28,7 +29,6 @@ class Token:
         if "条" in raw_content:
             return cls(tag="a", val=kanji_to_id(raw_content), label=raw_content)
 
-        from app.article.constants.enums import ArticleDepth
         for depth in ArticleDepth:
             if depth.label_jp in raw_content:
                 return cls(tag=depth.short_name, val=kanji_to_id(raw_content), label=raw_content)
@@ -50,6 +50,7 @@ class Token:
         mapping = {"p": ArticleDepth.PARAGRAPH, "i": ArticleDepth.ITEM,
                    "s1": ArticleDepth.SUB_ITEM_1, "s2": ArticleDepth.SUB_ITEM_2}
         return mapping.get(self.tag, ArticleDepth.PARAGRAPH)
+
 
 class TokenGroup:
     def __init__(self, raw_segment: str, current_location: FullLocation):

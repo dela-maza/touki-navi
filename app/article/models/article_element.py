@@ -25,11 +25,11 @@ class ArticleElement:
         # enumerateを使ってインデックス i を取得
         for i, s in enumerate(self.sentences):
             # 基点座標をコピーして、文ごとの隔離を徹底
-            clean_loc = deepcopy(self.location)
-            resolver = ReferenceResolver(start_location=clean_loc)
+            clean_loc: FullLocation = deepcopy(self.location)
+            resolver: ReferenceResolver = ReferenceResolver(start_location=clean_loc)
 
-            chunked = ReferenceChunker.to_chunked_str(s.raw_text)
-            result = resolver.resolve(chunked)
+            chunked: str = ReferenceChunker.to_chunked_str(s.raw_text)
+            result: str = resolver.resolve(chunked)
 
             # エラーの原因だった print 部分を修正
             # print(f"DEBUG: Sentence[{i}] resolved on {self.location.id_attr}")

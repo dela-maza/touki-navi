@@ -1,7 +1,7 @@
 # touki-navi/models/sentence.py
 from dataclasses import dataclass
 from bs4.element import Tag
-
+from app.article.constants.enums import SentenceType
 
 @dataclass(frozen=True)
 class Sentence:
@@ -12,7 +12,7 @@ class Sentence:
     raw_text: str  # 純粋なテキスト内容
     resolved_text: str
     sentence_node: Tag  # BeautifulSoupのTagオブジェクトとして定義
-    column_flag: bool = False
+    sentence_type: SentenceType = SentenceType.SENTENCE  # Enum型をデフォルト付きで導入
 
     @property
     def text(self) -> str:
@@ -28,5 +28,5 @@ class Sentence:
             "num": self.num,
             "raw_text": self.raw_text,
             "resolved_text": self.resolved_text,
-            "column_flag": self.column_flag
+            "sentence_type": self.sentence_type
         }

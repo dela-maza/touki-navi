@@ -22,7 +22,7 @@ class Article:
     def location(self) -> FullLocation:
         """
         自分自身の「条」レベルの座標を動的に生成する。
-        （Elementsに依存せず、自身のnumとlaw_typeから決定できる）
+        Elementsに依存せず、自身の条番号(num)と法典名(law_type)から決定する
         """
         return FullLocation(
             law_type=self.law_type,
@@ -41,7 +41,7 @@ class Article:
         return f"{self.title} {self.caption}".strip()
 
     def resolve_all(self) -> 'Article':
-        """配下の全 Paragraph に対して参照解決を実行し、新しい Article を返す"""
+        """配下の全 Paragraph に対して参照条文解決を実行し、新しい Article を返す"""
         resolved_paragraphs = [p.resolve_references() for p in self.paragraphs]
         return replace(self, paragraphs=resolved_paragraphs)
 

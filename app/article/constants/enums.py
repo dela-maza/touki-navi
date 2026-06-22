@@ -1,3 +1,4 @@
+# constants/enums.py
 from enum import Enum
 
 class LawType(Enum):
@@ -31,3 +32,6 @@ class ArticleDepth(Enum):
                 return depth
         return None
 
+class SentenceType(Enum):
+    SENTENCE = 0
+    COLUMN = 1

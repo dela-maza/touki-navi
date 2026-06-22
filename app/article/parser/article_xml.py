@@ -1,11 +1,12 @@
 # touki-navi/parser/article_xml.py
-from bs4 import BeautifulSoup
+from typing import Any
+from bs4 import BeautifulSoup, Tag
 from app.article.constants.enums import LawType, ArticleDepth
 from app.article.models.article_loc import FullLocation, ArticleLocation
 from app.article.models.sentence import Sentence
 from app.article.models.article_element import ArticleElement
 from app.article.models.article import Article
-
+from app.article.constants.enums import SentenceType
 
 class ArticleXMLParser:
     @staticmethod
@@ -18,16 +19,58 @@ class ArticleXMLParser:
 
         for node in article_nodes:
             # 条文の構築
-            art = ArticleXMLParser._parse_single_article(node, law_type)
+            art: Article = ArticleXMLParser._parse_single_article(node, law_type)
             # 解析が終わった後に「解決（Resolve）」を一気に実行
-            # これにより、Viewでの使い回し汚染を防ぐ
             articles.append(art.resolve_all())
 
         return articles
 
     @staticmethod
-    def _parse_single_article(node, law_type: LawType) -> Article:
+    def _create_element(node: Tag, depth: ArticleDepth, location: FullLocation) -> ArticleElement:
+        """
+        各階層（項・号・目・目2）の共通パース処理。
+        直下のSentenceを収集し、無ければColumn（表形式）を結合してArticleElementを生成する。
+        （PyCharmの重複コード警告対策および可読性向上のための分離メソッド）
+        """
+        num_str = node.get('Num', '')  # 'イ' -> '1' , '（１）' ->'1'
+        sentences :list[Sentence]= []
+
+        # 1. 通常のSentenceをスキャン
+        for st_node in node.find_all('Sentence', recursive=False):
+            sentences.append(Sentence(
+                num=st_node.get('Num', '1'),
+                raw_text=st_node.get_text(),
+                resolved_text="",
+                sentence_node=st_node,
+                sentence_type=SentenceType.SENTENCE
+            ))
+
+        # 2. Columnをスキャン（結合せず、バラのまま型を変えて追加する！）
+        for col_node in node.find_all('Column', recursive=False):
+            sentences.append(Sentence(
+                num=col_node.get('Num', '1'),  # xmlからNum属性（1や2）をそのまま取得！
+                raw_text=col_node.get_text(),
+                resolved_text="",
+                sentence_node=col_node,
+                sentence_type=SentenceType.COLUMN  # ここでアイデンティティを確立
+            ))
+
+        return ArticleElement(
+            depth=depth,
+            num=num_str,
+            location=location,
+            title="",
+            sentences=sentences
+        )
+
+    @staticmethod
+    def _parse_single_article(node: Tag, law_type: LawType) -> Article:
         article_num = node.get('Num', '')
+
+        # 見出し（ArticleCaption）とタイトル（ArticleTitle）の取得
+        caption_node = node.find('ArticleCaption')
+        article_caption = caption_node.get_text() if caption_node else ""
+
         article_title = node.find('ArticleTitle').get_text() if node.find('ArticleTitle') else ""
 
         base_location = FullLocation(
@@ -37,35 +80,71 @@ class ArticleXMLParser:
         )
 
         paragraphs = []
+
+        # =================================================================
+        # 1層目: 項 (Paragraph) のループ
+        # =================================================================
         for pg_node in node.find_all('Paragraph', recursive=False):
-            pg_num = pg_node.get('Num', '1')
-            pg_val = int(pg_num) if pg_num.isdigit() else 1
-            pg_location = base_location.update_relative(ArticleDepth.PARAGRAPH, pg_val)
+            pg_num: Any = pg_node.get('Num', '1')
+            pg_val: int = int(pg_num) if pg_num.isdigit() else 1
+            pg_location: FullLocation = base_location.update_relative(ArticleDepth.PARAGRAPH, pg_val)
 
-            sentences = []
-            for st_node in pg_node.find_all('Sentence'):
-                sentences.append(Sentence(
-                    num=st_node.get('Num', '1'),
-                    raw_text=st_node.get_text(),
-                    resolved_text="",  # resolve_references() で後から埋める
-                    sentence_node=st_node
-                ))
+            # 共通メソッド化により1行でスッキリ生成
+            pg_element = ArticleXMLParser._create_element(pg_node, ArticleDepth.PARAGRAPH, pg_location)
 
-            paragraphs.append(ArticleElement(
-                depth=ArticleDepth.PARAGRAPH,
-                num=pg_num,
-                location=pg_location,
-                title="",
-                sentences=sentences
-            ))
+            # =============================================================
+            # 2層目: 号 (Item) のループ
+            # =============================================================
+            for item_node in pg_node.find_all('Item', recursive=False):
+                item_num = item_node.get('Num', '')
+                item_val: int = int(item_num) if item_num.isdigit() else 1
+                item_location: FullLocation = pg_location.update_relative(ArticleDepth.ITEM, item_val)
+
+                item_element = ArticleXMLParser._create_element(item_node, ArticleDepth.ITEM, item_location)
+
+                # =========================================================
+                # 3層目: 目 (Subitem1) のループ
+                # =========================================================
+                for si1_node in item_node.find_all('Subitem1', recursive=False):
+                    si1_num = si1_node.get('Num', '1')
+                    # XML側がすでに Num="1" と数字で持ってくれているので、intにするだけでOK！
+                    si1_val = int(si1_num) if si1_num.isdigit() else 1
+                    si1_location: FullLocation = item_location.update_relative(ArticleDepth.SUB_ITEM_1, si1_val)
+
+                    si1_element = ArticleXMLParser._create_element(si1_node, ArticleDepth.SUB_ITEM_1, si1_location)
+
+                    # =====================================================
+                    # 4層目: 目2 (Subitem2) のループ
+                    # =====================================================
+                    for si2_node in si1_node.find_all('Subitem2', recursive=False):
+                        si2_num = si2_node.get('Num', '1')
+                        # 目2（（一）（二）など）も同様にXML上は Num="1" になっているためint化
+                        si2_val = int(si2_num) if si2_num.isdigit() else 1
+                        si2_location: FullLocation = si1_location.update_relative(ArticleDepth.SUB_ITEM_2, si2_val)
+
+                        si2_element = ArticleXMLParser._create_element(si2_node, ArticleDepth.SUB_ITEM_2, si2_location)
+
+                        # 最下層（目2）を 目1 の子要素として追加
+                        si1_element.children.append(si2_element)
+
+                    # 目1 を 号 の子要素として追加
+                    item_element.children.append(si1_element)
+
+                # 号 を 項 の子要素として追加
+                pg_element.children.append(item_element)
+
+            # 項 を 条文 の段落リストに追加
+            paragraphs.append(pg_element)
 
         return Article(
             num=article_num,
             law_type=law_type,
             title=article_title,
-            caption="",
+            caption=article_caption,
             paragraphs=paragraphs
         )
+
+
 """
 <Article Num="1_2">
   <ArticleCaption>（定義）</ArticleCaption>
