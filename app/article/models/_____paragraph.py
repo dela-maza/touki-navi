@@ -1,15 +1,18 @@
 # touki-navi/models/_____paragraph.py
-from dataclasses import dataclass, field
-from typing import List
-from app.article.models.article_loc import FullLocation
-from models.law_element import LawElement  # ここでインポート
+from dataclasses import dataclass
+from app.article.models.subdivision import Subdivision
+from app.article.constants.enums import ArticleDepth
 
-@dataclass(frozen=True)
-class Paragraph:
+@dataclass
+class Paragraph(Subdivision):
     """
-    条(Article)の直下にある項。
+    条文の直下にぶら下がる「項」を表すクラス
     """
-    num: str
-    full_loc: FullLocation
-    sentences: List[str]
-    items: List[LawElement] = field(default_factory=list)
+    def __init__(self, num: str, location, sentences, children=None):
+        super().__init__(
+            depth=ArticleDepth.PARAGRAPH,
+            num=num,
+            location=location,
+            sentences=sentences,
+            children=children or []
+        )

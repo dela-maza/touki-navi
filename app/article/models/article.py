@@ -1,7 +1,7 @@
 # touki-navi/models/article_xml.py
 from dataclasses import dataclass, replace
 from typing import List
-from app.article.models.article_element import ArticleElement
+from app.article.models._____paragraph import Paragraph
 from app.article.models.article_loc import FullLocation
 from app.article.models.article_loc import ArticleLocation
 from app.article.constants.enums import LawType
@@ -16,7 +16,7 @@ class Article:
     num: str  # XML属性のNum (例: "1", "1_2")
     title: str  # 表示用タイトル (例: "第一条", "第一条の二")
     caption: str  # 条文の見出し (例: "（目的）", "（定義）")
-    paragraphs: List[ArticleElement]  # 項のリスト（ElementType.PARAGRAPH を想定）
+    paragraphs: List[Paragraph]  # 項のリスト（ElementType.PARAGRAPH を想定）
 
     @property
     def location(self) -> FullLocation:

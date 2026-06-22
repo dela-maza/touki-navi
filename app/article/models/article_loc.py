@@ -1,16 +1,17 @@
 # touki-navi/models/article_loc.py
-from typing import cast,Tuple
+from typing import cast, Tuple
 from dataclasses import dataclass
 from app.article.constants.enums import LawType, ArticleDepth
 
 @dataclass(frozen=True)
 class ArticleLocation:
     """
-    一条の中の「相対住所」
+    一条の中の「相対住所」。
     idx_path: (項index, 号index, 細別1index, 細別2index)
-    ※インデックスは 0 スタートとする（第1項なら 0）
+    ※ 枝番（"1_1"）やイロハをそのまま保持するため、すべてstr型で管理する。
     """
-    path: Tuple[int, int, int, int] = (0, 0, 0, 0)
+    # 初期値をすべて文字列の "0" に統一  例: ["1", "1_2", "1_3", "2", "3", ...]
+    path: Tuple[str, str, str, str] = ("0", "0", "0", "0")
 
     @property
     def depth(self) -> ArticleDepth:
@@ -19,11 +20,12 @@ class ArticleLocation:
         """
         for i in range(len(self.path) - 1, 0, -1):
             # path配列の末尾(path配列数-1)から0まで-1ずつ
-            if self.path[i] > 0:
+            # "0" でなければその階層にいると判定
+            if self.path[i] != "0":
                 return ArticleDepth(i)
         return ArticleDepth.PARAGRAPH
 
-    def get_path_index(self, depth: ArticleDepth) -> int:
+    def get_path_index(self, depth: ArticleDepth) -> str:
         """
         指定された階層の現在のインデックス値を取得する。
         """
@@ -31,20 +33,20 @@ class ArticleLocation:
         # その index プロパティ（0〜3）を使って tuple から値を取り出す
         return self.path[depth.index]
 
-    def set_at(self, depth: ArticleDepth, val: int) -> "ArticleLocation":
-        path_list :list[int]= list(self.path) # tuple -> list
-        target_idx:int  = depth.index
-        path_list[target_idx] = val
+    def set_at(self, depth: ArticleDepth, val: str) -> "ArticleLocation":
+        path_list: list[str] = list(self.path) # tuple -> list
+        target_idx: int = depth.index
+        path_list[target_idx] = str(val) # 確実に文字列として代入
 
         # 以降のリセット
         for i in range(target_idx + 1, len(path_list)):
-            path_list[i] = 0
+            path_list[i] = "0"
         return ArticleLocation(path=tuple(path_list))
 
     @property
     def addr(self) -> str:
         """2.3.0.0 形式（項.号.目1.目2）の文字列を返す"""
-        return ".".join(map(str, self.path))
+        return ".".join(self.path)
 
 @dataclass(frozen=True)
 class FullLocation:
@@ -54,7 +56,7 @@ class FullLocation:
 
     # --- 状態遷移メソッド ---
     @staticmethod
-    def update_law( new_law: LawType) -> "FullLocation":
+    def update_law(new_law: LawType) -> "FullLocation":
         """
         law_typeが変わった場合
         article_num以下をリセット
@@ -62,7 +64,7 @@ class FullLocation:
         return FullLocation(
             law_type=new_law,
             article_num="0",
-            relative_loc=ArticleLocation((0, 0, 0, 0))
+            relative_loc=ArticleLocation(("0", "0", "0", "0"))
         )
 
     def update_article(self, num_str: str) -> "FullLocation":
@@ -73,10 +75,10 @@ class FullLocation:
         return FullLocation(
             self.law_type,
             article_num=num_str,
-            relative_loc=ArticleLocation((0, 0, 0, 0))
+            relative_loc=ArticleLocation(("0", "0", "0", "0"))
         )
 
-    def update_relative(self, depth: ArticleDepth, val: int) -> "FullLocation":
+    def update_relative(self, depth: ArticleDepth, val: str) -> "FullLocation":
         """項・号・目が切り替わった場合（ArticleLocationのロジックを使用）"""
         # 既存の set_at をそのまま活用
         new_relative = self.relative_loc.set_at(depth, val)
@@ -94,6 +96,7 @@ class FullLocation:
         相対値の場合: shoutouki.-1.1.0.0.0
         """
         return f"{self.law_type.short_name}.{self.article_num}.{self.relative_loc.addr}"
+
     def to_dict(self):
         return {
             "law_short_name": self.law_type.short_name,
