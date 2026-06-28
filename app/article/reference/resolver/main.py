@@ -1,4 +1,4 @@
-#reference/resolver/main.py
+#app/reference/resolver/main.py
 import re
 
 from app.article.models.article_loc import FullLocation

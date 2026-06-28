@@ -1,33 +1,55 @@
 # touki-navi/models/sentence.py
-from dataclasses import dataclass
-from bs4.element import Tag
-from app.article.constants.enums import SentenceType
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from typing import List, Dict, Optional
 
-@dataclass(frozen=True)
+@dataclass
 class Sentence:
+    """<Sentence> タグそのものを表す、末端の最小テキストコンテナ"""
+    num: str
+    text: str
+    # writing_mode: str = "vertical"
+
+class BlockSentenceBase(ABC):
     """
-    条文内の最小単位である「一文」を表すクラス。
+    <ItemSentence> などの文章ブロックを表す、厳格な抽象基盤クラス（インターフェース）。
     """
-    num: str  # XML属性のNum
-    raw_text: str  # 純粋なテキスト内容
-    resolved_text: str
-    sentence_node: Tag  # BeautifulSoupのTagオブジェクトとして定義
-    sentence_type: SentenceType = SentenceType.SENTENCE  # Enum型をデフォルト付きで導入
 
     @property
-    def text(self) -> str:
+    @abstractmethod
+    def flat_text(self) -> str:
         """
-        便宜上、解決済みがあればそれを、なければ生を返すプロパティ
-        （後続の表示ロジックを壊さないための工夫）
+        子クラスに対して、平文テキストを返すプロパティの実装を『絶対強制』する。
         """
-        return self.resolved_text if self.resolved_text else self.raw_text
+        pass
 
-    def to_dict(self):
-        # Tagを除外した辞書を返す
-        return {
-            "num": self.num,
-            "raw_text": self.raw_text,
-            "resolved_text": self.resolved_text,
-            "sentence_type": self.sentence_type
-        }
-{[会社法][第一条][第一項][第一号][イ][（１）]|[会社法][第1条][第1項][第1号][イ][（１）]|[kai.1.1.1.1.1]}
+
+# =================================================================
+# Columnが【無い】
+# =================================================================
+@dataclass
+class PlainBlockSentence(BlockSentenceBase):
+    """Columnを持たない、ただのフラットな文の並びを管理するクラス"""
+    sentences: List[Sentence] = field(default_factory=list)
+
+    @property
+    def flat_text(self) -> str:
+        # 💡 基盤クラスの抽象プロパティを素直に具現化
+        return "".join([s.text for s in self.sentences])
+
+
+# =================================================================
+# Columnが【有る】
+# =================================================================
+@dataclass
+class ColumnBlockSentence(BlockSentenceBase):
+    """Column（表・定義）構造を持つ、多列マトリクスを管理するクラス"""
+    columns: Dict[int, List[Sentence]] = field(default_factory=dict)
+
+    @property
+    def flat_text(self) -> str:
+        # 💡 基盤クラスの抽象プロパティを素直に具現化
+        text = ""
+        for idx in sorted(self.columns.keys()):
+            text += "".join([s.text for s in self.columns[idx]])
+        return text

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Touki Navi Collaboration"
+  short_description: "Touki Navi project collaboration rules"
+  default_prompt: "Use $touki-navi-collaboration when working in the touki-navi project."

@@ -13,20 +13,23 @@ def to_zenkaku(s: str) -> str:
     return s.translate(str.maketrans('0123456789', '０１２３４５６７８９'))
 
 
-# 1. 基準となる「第◯条」「第◯項」「第◯号」
-BASE_UNIT_RE = re.compile(r'第([一二三四五六七八九十百千万]+)([条項号])')
+# 1. 基準となる「第◯条」「第◯項」「第◯号」および「前◯条」「後◯条」
+BASE_UNIT_RE = re.compile(r'([第前後])([一二三四五六七八九十百千万]+)([条項号])')
 
 # 2. 直後に続く「の◯」
 SUB_UNIT_RE = re.compile(r'([条項号]|(?<=[条項号０-９])の)([一二三四五六七八九十百千万]+)')
 
+KANJI_NUMBER_RE = re.compile(r"[一二三四五六七八九十百千万]")
+
 
 def convert_law_numbers(text: str) -> str:
-    # ステップ1: 主番号の変換 (例: 第三十三条 -> 第３３条)
+    # ステップ1: 主番号の変換 (例: 第三十三条 -> 第３３条、前三条 -> 前３条)
     def replace_base(match):
-        num = kanji2number(match.group(1))
+        prefix = match.group(1)
+        num = kanji2number(match.group(2))
         num_zen = to_zenkaku(str(num))
-        unit = match.group(2)
-        return f"第{num_zen}{unit}"
+        unit = match.group(3)
+        return f"{prefix}{num_zen}{unit}"
 
     processed_text = BASE_UNIT_RE.sub(replace_base, text)
 
@@ -47,6 +50,22 @@ def convert_law_numbers(text: str) -> str:
         processed_text = new_text
 
     return processed_text
+
+
+def try_kanji_to_id(value: str, level: ArticleDepth = None) -> tuple[str, bool]:
+    """
+    漢数字を含む文字列だけを kanji_to_id() でID用の半角数値・記号に変換する。
+
+    :return: (変換後の文字列, 変換したかどうか)
+
+    例:
+        「第一条」 -> ("1", True)
+        「前条」 -> ("前条", False)
+    """
+    if not KANJI_NUMBER_RE.search(value):
+        return value, False
+
+    return kanji_to_id(value, level), True
 
 
 def kanji_to_id(value: str, level: ArticleDepth = None) -> str:

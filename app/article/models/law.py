@@ -1,7 +1,7 @@
 # models/law.py
-from app.article.models.article import ArticleIndex
-from app.article.constants.enums import LawType
 
+from app.article.constants.enums import LawType
+from app.article.models.index import ArticleIndex
 class LawLibrary:
     """
     全ての法典の『背表紙（Index）』を管理する書庫。

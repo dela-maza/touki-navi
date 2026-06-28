@@ -1,43 +1,122 @@
-# touki-navi/models/article_xml.py
-from dataclasses import dataclass, replace
-from typing import List
-from app.article.models._____paragraph import Paragraph
-from app.article.models.article_loc import FullLocation
-from app.article.models.article_loc import ArticleLocation
+# app/article/models/article.py
+from dataclasses import dataclass, field, replace
+from typing import List, Any
 from app.article.constants.enums import LawType
+from app.article.models.article_loc import FullLocation, ArticleLocation
+from app.article.models.sentence import BlockSentenceBase
+
+# =================================================================
+# 🧬 1. 基盤インターフェース（下流階層用）
+# =================================================================
+@dataclass
+class SubDivisionBase:
+    """
+    号・目・細目など、下流へネストしていく箇条書き階層（Subdivision）の共通基盤。
+    """
+    num: str                  # XML属性のNum（例: "1", "1_2"）
+    title: str                # 画面表示用タイトル（例: "一", "イ", "（１）"）
+    location: FullLocation    # 空文字パディング行列が入った絶対座標
+    body: BlockSentenceBase   # ABCで定義された、Columnの有無を隠蔽した文章ブロック
 
 
+# =================================================================
+# 🌿 2. 従・箇条書きツリーノード
+# =================================================================
+@dataclass
+class Subitem2(SubDivisionBase):
+    """細目 (Subitem2) ノード"""
+    children: List[Any] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "num": self.num,
+            "title": self.title,
+            "body": self.body.flat_text,  # ABCの窓口から安全にテキスト化
+            "children": self.children
+        }
+
+
+@dataclass
+class Subitem1(SubDivisionBase):
+    """目 (Subitem1) ノード"""
+    children: List[Subitem2] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "num": self.num,
+            "title": self.title,
+            "body": self.body.flat_text,
+            "children": [c.to_dict() for c in self.children]
+        }
+
+
+@dataclass
+class Item(SubDivisionBase):
+    """号 (Item) ノード"""
+    children: List[Subitem1] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "num": self.num,
+            "title": self.title,
+            "body": self.body.flat_text,
+            "children": [c.to_dict() for c in self.children]
+        }
+
+
+# =================================================================
+# 👑 3. 主・トップレベルノード
+# =================================================================
+@dataclass
+class Paragraph:
+    """
+    項 (Paragraph) ノード
+    箇条書き（SubDivisionBase）とは完全に分離された、条文直下の絶対的独立ブロック。
+    """
+    num: str
+    location: FullLocation
+    body: BlockSentenceBase
+    items: List[Item] = field(default_factory=list)
+
+    def resolve_references(self) -> 'Paragraph':
+        """【TODO】この項の配下にある文章の参照解決を走り終えて、新しい項を返す"""
+        # 今はモックとして自分自身をそのまま返す（後ほど実装）
+        return self
+
+    def to_dict(self) -> dict:
+        return {
+            "num": self.num,
+            "body": self.body.flat_text,
+            "items": [i.to_dict() for i in self.items]
+        }
+
+
+# =================================================================
+# 🏛️ 4. ルートエンティティ
+# =================================================================
 @dataclass(frozen=True)
 class Article:
-    """
-    条(Article)を表すクラス。
-    """
-    law_type:LawType
-    num: str  # XML属性のNum (例: "1", "1_2")
-    title: str  # 表示用タイトル (例: "第一条", "第一条の二")
-    caption: str  # 条文の見出し (例: "（目的）", "（定義）")
-    paragraphs: List[Paragraph]  # 項のリスト（ElementType.PARAGRAPH を想定）
+    """条 (Article) を表すルートクラス"""
+    law_type: LawType
+    num: str
+    title: str
+    caption: str
+    paragraphs: List[Paragraph]
 
     @property
     def location(self) -> FullLocation:
-        """
-        自分自身の「条」レベルの座標を動的に生成する。
-        Elementsに依存せず、自身の条番号(num)と法典名(law_type)から決定する
-        """
         return FullLocation(
             law_type=self.law_type,
             article_num=self.num,
-            relative_loc=ArticleLocation()  # (0,0,0,0)
+            relative_loc=ArticleLocation()
         )
 
     @property
     def is_branch(self) -> bool:
-        """枝番（第〇条の二など）かどうかを判定"""
         return "_" in self.num
 
     @property
     def full_title(self) -> str:
-        """タイトルと見出しを結合した文字列を返す"""
         return f"{self.title} {self.caption}".strip()
 
     def resolve_all(self) -> 'Article':
@@ -45,11 +124,10 @@ class Article:
         resolved_paragraphs = [p.resolve_references() for p in self.paragraphs]
         return replace(self, paragraphs=resolved_paragraphs)
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
         return {
             "num": self.num,
             "title": self.title,
             "caption": self.caption,
             "paragraphs": [p.to_dict() for p in self.paragraphs]
         }
-

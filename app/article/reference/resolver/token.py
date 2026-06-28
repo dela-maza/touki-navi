@@ -1,122 +1,315 @@
-# reference/resolver/token.py
-
+# app.article.reference.resolver.token.py
 import re
-from app.article.common.law_utils import kanji_to_id
+from abc import ABC, abstractmethod
+
+from app.article.common.law_utils import to_hankaku
+from app.article.constants.enums import LawType
+from app.article.constants.markers import ReferenceMarker
+from app.article.constants.xml_tags import Subitem1Rule, Subitem2Rule
 from app.article.models.article_loc import ArticleDepth, FullLocation
+from app.article.models.law import LawLibrary
 
 
-class Token:
-    def __init__(self, tag: str, offset: str, label: str):
-        self.tag = tag  # "a", "p", "i", "s1", "s2"
-        self.offset = offset  # 全て文字列("1", "1_2", "-1", "0"など)で一貫管理
-        self.label = label  # "前条", "第一項の二" など元の文字列
+class TokenBase(ABC):
+    """
+    TokenGroup が扱う最小単位の共通インターフェイス。
 
-    @classmethod
-    def parse(cls, raw_content: str) -> "Token":
-        # --- 1. 相対指定（前条等）・複数指定の直値マッピング（新規表現を追加） ---
-        fixed_tokens = {
-            "前条": ("a", "-1"),
-            "同条": ("a", "0"),
-            "次条": ("a", "1"),
-            "前項": ("p", "-1"),
-            "同項": ("p", "0"),
-            "次項": ("p", "1"),
-            "前号": ("i", "-1"),
-            "同号": ("i", "0"),
-            "次号": ("i", "1"),
-            "各号": ("i", "each"),  # 複数解決（各号）トークンとしての識別子
-        }
-        if raw_content in fixed_tokens:
-            # fixed_tokens 例　"前条" が　raw_content　に含まれている場合
-            tag, offset = fixed_tokens[raw_content]
-            return cls(tag=tag, offset=offset, label=raw_content)
+    Token は AbsoluteToken または ShiftToken のどちらかであり、同時に両方にはならない。
+    AbsoluteToken は起点なしで location に反映できる単位、
+    ShiftToken は this_location / last_ref_location という起点があって初めて反映できる単位である。
+    """
 
-        # --- 2. 絶対指定（条番号・枝番対応含む） ---
-        if "条" in raw_content:
-            return cls(tag="a", offset=str(kanji_to_id(raw_content)), label=raw_content)
+    def __init__(self, key: str, raw: str, arabic: str):
+        self.key = key
+        self.raw = raw
+        self.arabic = arabic
 
-        # 階層定義Enumから動的にマッピング（返り値はstr型で確定させる）
-        for depth in ArticleDepth:
-            if depth.label_jp in raw_content:
-                return cls(tag=depth.short_name, offset=str(kanji_to_id(raw_content)), label=raw_content)
+    @abstractmethod
+    def apply_to(self, location: FullLocation) -> FullLocation:
+        """この Token を location に反映した新しい FullLocation を返す。"""
+
+    @property
+    def label(self) -> str:
+        """旧実装の呼び出し名を残しつつ、表示用には raw を返す。"""
+        return self.raw
+
+    @property
+    def tag(self) -> str:
+        """旧実装の呼び出し名を残しつつ、新しい key を返す。"""
+        return self.key
 
 
-        # --- 3. 目・細目（イロハ・数字） ---
-        if re.fullmatch(r"[イロハニホヘトチリヌルヲ]+", raw_content):
-            return cls(tag="s1", offset=raw_content, label=raw_content)
+class AbsoluteToken(TokenBase):
+    """
+    起点なしで location に反映できる Token。
 
-        if re.fullmatch(r"（[０-９]+）", raw_content):
-            table = str.maketrans("０１２３４５６７８９", "0123456789", "（）")
-            offset = raw_content.translate(table)
-            return cls(tag="s2", offset=offset, label=raw_content)
+    例:
+        [会社法] -> law=kai
+        [第１条] -> a=1
+        [第１項] -> p=1
+        [第１号] -> i=1
+    """
 
-        return cls(tag="unknown", offset="0", label=raw_content)
+    def __init__(self, key: str, value: str, raw: str, arabic: str):
+        super().__init__(key, raw, arabic)
+        self.value = value
+
+    def apply_to(self, location: FullLocation) -> FullLocation:
+
+        # 法典名・条番号
+        if self.key == "law":
+            return location.update_law(self.value)
+        if self.key == "a":
+            return location.update_article(self.value)
+
+        # 項以下
+        depth = self.get_article_depth()
+        return location.update_relative(depth, self.value)
 
     def get_article_depth(self) -> ArticleDepth:
-        mapping = {
-            "p": ArticleDepth.PARAGRAPH,
-            "i": ArticleDepth.ITEM,
-            "s1": ArticleDepth.SUB_ITEM_1,
-            "s2": ArticleDepth.SUB_ITEM_2
-        }
-        return mapping.get(self.tag, ArticleDepth.PARAGRAPH)
+        return _key_to_depth(self.key)
 
 
-# reference/resolver/token.py
+class ShiftToken(TokenBase):
+    """
+    起点 location があって初めて反映できる Token。
+
+    例:
+        [p=1] -> 起点 location の第1項
+        [i=-1] -> 起点 location の前号
+        [a=-3_range] -> 起点 location から前三条
+    """
+
+    def __init__(self, key: str, offset: str, raw: str, arabic: str):
+        super().__init__(key, raw, arabic)
+        self.offset = offset
+        self.offset_num, self.offset_suffix = self._parse_offset(offset)
+        self.resolved_ids: list[str] | None = None
+
+    def apply_to(self, location: FullLocation) -> FullLocation:
+        # ShiftToken の location 適用は TokenGroup の責務。
+        return location
+
+    def get_article_depth(self) -> ArticleDepth:
+        return _key_to_depth(self.key)
+
+    @staticmethod
+    def _parse_offset(offset: str) -> tuple[int | None, str]:
+        """
+        :param offset: '-3_range'
+        :return: (-3, 'range')
+        """
+
+        # 'each'
+        if offset == ReferenceMarker.EACH:
+            return None, ReferenceMarker.EACH  # (None, "each")
+
+        # '-3_range'
+        suffix = ""
+        value = offset  # '-3_range'
+        if value.endswith(ReferenceMarker.RANGE_SUFFIX):
+            suffix = ReferenceMarker.RANGE_SUFFIX  # 'range'
+            value = value.removesuffix(ReferenceMarker.RANGE_SUFFIX)  # '-3'
+
+        try:
+            return int(value), suffix
+        except ValueError as e:
+            raise ValueError(f"invalid shift offset: {offset}") from e
 
 class TokenGroup:
-    def __init__(self, raw_segment: str, cur_location: FullLocation, last_ref_location: FullLocation):
-        """
-        引数に「不変の現在地 (cur_location)」と「文脈で変動する直近参照 (last_ref_location)」の双方を受け取る。
-        """
-        # [[会社法][第一条][第一項][第一号][イ][（１）]] ->  会社法][第一条][第一項][第一号][イ][（１）
-        clean_segment = raw_segment.replace("[[", "").replace("]]", "")
-        # 会社法][一条][一項][一号][イ][（１） -> "会社法","第一条","第一項","第一号","イ","（１）"
-        self.raw_contents: list[str] = clean_segment.split("][")
-        self.tokens: list[Token] = [Token.parse(c) for c in self.raw_contents]
+    """
+    1つの reference mark を分解し、TokenUnit から location を組み立てるレイヤ。
 
-        # 💡【二軸化適応】それぞれの基準座標をベースに移動先を個別に計算
-        self.location_via_cur: FullLocation = self._cul_last_ref_location(cur_location)
-        self.location_via_ref: FullLocation = self._cul_last_ref_location(last_ref_location)
+    TokenGroup は this_location と last_ref_location の二軸を保持する。
+    this_location は現在処理中の条文自身を起点に計算した location、
+    last_ref_location は直前の参照条文を起点に計算した location である。
 
-        # 次のTokenGroupへ文脈を引き継ぐための、変動後の最新参照座標
-        self.final_last_ref: FullLocation = self.location_via_ref
+    ただし、このクラスはどちらの location が実在するか、またはリンクとして採用されるかを判断しない。
+    その判断は DB 照会を行う上位レイヤの責務である。
+    """
 
-    def _cul_last_ref_location(self, last_ref_loc: FullLocation) -> FullLocation:
-        """
-        簡易判定の役割を維持しつつ、LocationShiftResolver(shift.py)が
-        本格稼働するまでの繋ぎとして型安全（str）に処理する。
-        """
-        loc = last_ref_loc
+    def __init__(self, raw_segment: str,
+                 this_location: FullLocation, last_ref_location: FullLocation):
+        self.raw_segment = raw_segment
+
+        raw_part, arabic_part, shift_part, this_loc_part, last_ref_loc_part = self._split_segment(raw_segment)
+        self.raw_units: list[str] = self._split_bracket_values(raw_part)
+        self.arabic_units: list[str] = self._split_bracket_values(arabic_part)
+        self.shift_units: list[str] = self._split_bracket_values(shift_part)
+        self.this_loc_part = this_loc_part
+        self.last_ref_loc_part = last_ref_loc_part
+
+        self.absolute_tokens: list[AbsoluteToken] = self._create_absolute_tokens()
+        self.shift_tokens: list[ShiftToken] = self._create_shift_tokens()
+        self.tokens: list[TokenBase] = [*self.absolute_tokens, *self.shift_tokens]
+
+        self.this_location: FullLocation = self._build_location(this_location)
+        self.last_ref_location: FullLocation = self._build_location(last_ref_location)
+        self.final_last_ref: FullLocation = self.last_ref_location
+
+        # 旧呼び出し名との互換用。main.py の整理時に削除する。
+        self.location_via_this: FullLocation = self.this_location
+        self.location_via_ref: FullLocation = self.last_ref_location
+
+    @classmethod
+    def _split_segment(cls, raw_segment: str) -> tuple[str, str, str, str, str]:
+        elements = raw_segment.strip("{}").split("|")
+        if len(elements) != 5:
+            raise ValueError(f"reference mark must have 5 fields: {raw_segment}")
+        return tuple(elements)  # type: ignore[return-value]
+
+    @classmethod
+    def _split_bracket_values(cls, bracket_part: str) -> list[str]:
+        if not bracket_part:
+            return []
+        return bracket_part.strip("[]").split("][")
+
+    def _create_absolute_tokens(self) -> list[AbsoluteToken]:
+        tokens: list[AbsoluteToken] = []
+        for raw, arabic in zip(self.raw_units, self.arabic_units):
+            token = self._create_absolute_token(raw, arabic)
+            if token:
+                if self.shift_units and token.key != "law":
+                    continue
+                tokens.append(token)
+        return tokens
+
+    def _create_absolute_token(self, raw: str, arabic: str) -> AbsoluteToken | None:
+        law = _find_law_type(arabic)
+        if law:
+            return AbsoluteToken("law", law.short_name, raw, arabic)
+
+        if arabic == "同法":
+            return None
+
+        value = to_hankaku(arabic)
+
+        article_match = re.fullmatch(r"第([0-9]+)条(?:の([0-9]+))*", value)
+        if article_match:
+            return AbsoluteToken("a", _unit_number_to_id(value), raw, arabic)
+
+        paragraph_match = re.fullmatch(r"第([0-9]+)項", value)
+        if paragraph_match:
+            return AbsoluteToken("p", paragraph_match.group(1), raw, arabic)
+
+        item_match = re.fullmatch(r"第([0-9]+)号", value)
+        if item_match:
+            return AbsoluteToken("i", item_match.group(1), raw, arabic)
+
+        if Subitem1Rule.get_pattern().fullmatch(arabic):
+            return AbsoluteToken("s1", Subitem1Rule.MAP.get(arabic, arabic), raw, arabic)
+
+        if Subitem2Rule.get_pattern().fullmatch(arabic):
+            return AbsoluteToken("s2", Subitem2Rule.to_id(arabic), raw, arabic)
+
+        return None
+
+    def _create_shift_tokens(self) -> list[ShiftToken]:
+        tokens: list[ShiftToken] = []
+        for shift in self.shift_units:
+            key, offset = shift.split("=", 1)
+            raw, arabic = self._find_unit_for_shift(key, offset)
+            tokens.append(ShiftToken(key, offset, raw, arabic))
+        return tokens
+
+    def _find_unit_for_shift(self, key: str, offset: str) -> tuple[str, str]:
+        for raw, arabic in zip(self.raw_units, self.arabic_units):
+            value = to_hankaku(arabic)
+            if key == "a" and "条" in value:
+                return raw, arabic
+            if key == "p" and "項" in value:
+                return raw, arabic
+            if key == "i" and "号" in value:
+                return raw, arabic
+            if key == "s1" and Subitem1Rule.get_pattern().fullmatch(arabic):
+                return raw, arabic
+            if key == "s2" and re.fullmatch(r"\([0-9]+\)", value):
+                return raw, arabic
+        return "", ""
+
+    def _build_location(self, base_location: FullLocation) -> FullLocation:
+        current_location = base_location
         for token in self.tokens:
-            if token.tag == "a":
-                # 相対指定（"0", "-1"など）は本来LocationShiftResolverで処理するため、
-                # ここでは絶対指定の文字列番号（"111"など）が来たらそのまま条を上書きするガードを入れる
-                if token.offset not in ("0", "-1", "1"):
-                    loc = loc.update_article(token.offset)
-            elif token.tag in ("p", "i", "s1", "s2"):
-                depth = token.get_article_depth()
-                # 💡【改善】int() キャストを完全撤廃し、文字列のままモデルへ引き渡す
-                # 相対値（"-1", "0", "1"）でない具体的な番号が来たらその階層にセット
-                if token.offset not in ("-1", "0", "1", "each"):
-                    loc = loc.update_relative(depth, token.offset)
-            elif token.offset == "each":
-                # 各号トークン時のプレースホルダー挙動（必要に応じて拡張可能）
-                pass
-        return loc
+            if isinstance(token, ShiftToken):
+                current_location = self._apply_shift_token(current_location, token)
+                continue
+            current_location = token.apply_to(current_location)
+        return current_location
+
+    def _apply_shift_token(self, location: FullLocation, token: ShiftToken) -> FullLocation:
+        if token.key == "a":
+            return self._apply_article_shift(location, token)
+
+        if token.offset_num is None:
+            return location
+
+        depth = token.get_article_depth()
+
+        if token.offset_num == 0:
+            current_val = location.relative_loc.get_path_index(depth)
+            return location.update_relative(depth, current_val)
+
+        if token.offset_num in (-1, 1):
+            current_val = location.relative_loc.get_path_index(depth)
+            next_val = self._calculate_sibling_num(current_val, token.offset_num)
+            return location.update_relative(depth, next_val)
+
+        return location.update_relative(depth, str(token.offset_num))
+
+    def _apply_article_shift(self, location: FullLocation, token: ShiftToken) -> FullLocation:
+        if token.offset_num is None:
+            return location
+
+        if token.offset_num == 0:
+            return location.update_article(location.article_num)
+
+        if token.offset_suffix == ReferenceMarker.RANGE_SUFFIX:
+            return self._move_article_by_index(location, token, offset=token.offset_num, length=abs(token.offset_num))
+
+        if token.offset_num in (-1, 1):
+            return self._move_article_by_index(location, token, offset=token.offset_num, length=1)
+
+        raise ValueError(f"unexpected article shift offset: {token.offset}")
+
+    def _move_article_by_index(
+            self, location: FullLocation, token: ShiftToken, offset: int, length: int) -> FullLocation:
+        try:
+            index = LawLibrary.get_index(location.law_type)
+        except (ValueError, AttributeError):
+            return location
+
+        target_ids = index.get_offset_ids(location.article_num, offset, length)
+        if not target_ids:
+            return location
+
+        if length > 1:
+            token.resolved_ids = target_ids
+
+        return location.update_article(target_ids[-1])
+
+    @staticmethod
+    def _calculate_sibling_num(current_val: str, offset: int) -> str:
+        if not current_val or current_val == "0":
+            return "1"
+        if current_val.isdigit():
+            return str(max(1, int(current_val) + offset))
+
+        parts = current_val.split("_")
+        if parts[-1].isdigit():
+            parts[-1] = str(max(1, int(parts[-1]) + offset))
+            return "_".join(parts)
+        return current_val
 
     def to_resolved_string(self) -> str:
         """
         2つの座標軸のID（id_attr）をデータ属性として埋め込んだ
         曖昧さ対応のデバッグ用マークアップを生成する。
         """
-        original_text = "".join([t.label for t in self.tokens])
+        original_text = "".join(self.raw_units)
 
-        # 双方のロジックが弾き出したIDを取得
-        id_cur = self.location_via_cur.id_attr
-        id_ref = self.location_via_ref.id_attr
+        id_cur = self.this_location.id_attr
+        id_ref = self.last_ref_location.id_attr
 
-        # 同一のIDを指している場合は通常の表示、異なる場合は「候補が2つある」特殊表示にする
         is_ambiguous = (id_cur != id_ref)
         border_color = "#e74c3c" if is_ambiguous else "#f39c12"
         bg_color = "#fdf2e9" if is_ambiguous else "#fffdf0"
@@ -135,3 +328,29 @@ class TokenGroup:
             f'</span>'
             f'</span>'
         )
+
+    def to_resolved_string_with_options(self) -> str:
+        """main.py が旧名を呼んでいる間の互換メソッド。"""
+        return self.to_resolved_string()
+
+
+def _find_law_type(value: str) -> LawType | None:
+    for law in LawType:
+        if value == law.name_jp:
+            return law
+    return None
+
+
+def _key_to_depth(key: str) -> ArticleDepth:
+    mapping = {
+        "p": ArticleDepth.PARAGRAPH,
+        "i": ArticleDepth.ITEM,
+        "s1": ArticleDepth.SUB_ITEM_1,
+        "s2": ArticleDepth.SUB_ITEM_2,
+    }
+    return mapping[key]
+
+
+def _unit_number_to_id(value: str) -> str:
+    content = re.sub(r"[第条項号]", "", value)
+    return "_".join(part for part in content.split("の") if part)

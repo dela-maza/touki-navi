@@ -1,16 +1,14 @@
 # touki-navi/models/article_loc.py
-from typing import cast, Tuple
+from typing import Tuple
 from dataclasses import dataclass
 from app.article.constants.enums import LawType, ArticleDepth
+
 
 @dataclass(frozen=True)
 class ArticleLocation:
     """
     一条の中の「相対住所」。
-    idx_path: (項index, 号index, 細別1index, 細別2index)
-    ※ 枝番（"1_1"）やイロハをそのまま保持するため、すべてstr型で管理する。
     """
-    # 初期値をすべて文字列の "0" に統一  例: ["1", "1_2", "1_3", "2", "3", ...]
     path: Tuple[str, str, str, str] = ("0", "0", "0", "0")
 
     @property
@@ -19,10 +17,9 @@ class ArticleLocation:
         現在の階層を判定する。
         """
         for i in range(len(self.path) - 1, 0, -1):
-            # path配列の末尾(path配列数-1)から0まで-1ずつ
-            # "0" でなければその階層にいると判定
             if self.path[i] != "0":
-                return ArticleDepth(i)
+                depth = ArticleDepth.from_index(i)
+                return depth if depth else ArticleDepth.PARAGRAPH
         return ArticleDepth.PARAGRAPH
 
     def get_path_index(self, depth: ArticleDepth) -> str:
@@ -34,9 +31,9 @@ class ArticleLocation:
         return self.path[depth.index]
 
     def set_at(self, depth: ArticleDepth, val: str) -> "ArticleLocation":
-        path_list: list[str] = list(self.path) # tuple -> list
+        path_list: list[str] = list(self.path)  # tuple -> list
         target_idx: int = depth.index
-        path_list[target_idx] = str(val) # 確実に文字列として代入
+        path_list[target_idx] = str(val)  # 確実に文字列として代入
 
         # 以降のリセット
         for i in range(target_idx + 1, len(path_list)):
@@ -48,6 +45,7 @@ class ArticleLocation:
         """2.3.0.0 形式（項.号.目1.目2）の文字列を返す"""
         return ".".join(self.path)
 
+
 @dataclass(frozen=True)
 class FullLocation:
     law_type: LawType
@@ -55,14 +53,18 @@ class FullLocation:
     relative_loc: ArticleLocation
 
     # --- 状態遷移メソッド ---
-    @staticmethod
-    def update_law(new_law: LawType) -> "FullLocation":
+    def update_law(self, new_law: LawType | str) -> "FullLocation":
         """
         law_typeが変わった場合
         article_num以下をリセット
         """
+        if isinstance(new_law, str):
+            law_type = next((law for law in LawType if law.short_name == new_law), self.law_type)
+        else:
+            law_type = new_law
+
         return FullLocation(
-            law_type=new_law,
+            law_type=law_type,
             article_num="0",
             relative_loc=ArticleLocation(("0", "0", "0", "0"))
         )
