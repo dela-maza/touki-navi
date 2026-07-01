@@ -1,7 +1,7 @@
 # app/article/constants/xml_tags.py
 import re
 import unicodedata
-from app.article.constants.enums import ArticleDepth
+from app.article.constants.enums import ArticleDepth, HintMark, InlineMarkKind, QualifierMark, TocDepth
 
 # =================================================================
 # 1. 階層を問わず、法令XML全体で不動の「コア仕様」定数
@@ -9,6 +9,47 @@ from app.article.constants.enums import ArticleDepth
 TAG_SENTENCE = "Sentence"
 TAG_COLUMN = "Column"
 ATTR_NUM = "Num"
+TAG_TOC = "TOC"
+TAG_TOC_LABEL = "TOCLabel"
+TAG_TOC_SUPPL_PROVISION = "TOCSupplProvision"
+TAG_SUPPL_PROVISION_LABEL = "SupplProvisionLabel"
+TAG_ARTICLE_RANGE = "ArticleRange"
+
+# =================================================================
+# 1.25. location ではないが意味を持つ本文中マーク
+# =================================================================
+SEMANTIC_MARK_MAP = {
+    "ただし書": {
+        "kind": InlineMarkKind.QUALIFIER,
+        "value": QualifierMark.PROVISO.value,
+    },
+    "ただし書き": {
+        "kind": InlineMarkKind.QUALIFIER,
+        "value": QualifierMark.PROVISO.value,
+    },
+    "本文": {
+        "kind": InlineMarkKind.QUALIFIER,
+        "value": QualifierMark.MAIN_TEXT.value,
+    },
+    "前段": {
+        "kind": InlineMarkKind.QUALIFIER,
+        "value": QualifierMark.FIRST_PART.value,
+    },
+    "後段": {
+        "kind": InlineMarkKind.QUALIFIER,
+        "value": QualifierMark.LATTER_PART.value,
+    },
+    "本則": {
+        "kind": InlineMarkKind.HINT,
+        "key": HintMark.PART.value,
+        "value": "本則",
+    },
+    "附則": {
+        "kind": InlineMarkKind.HINT,
+        "key": HintMark.PART.value,
+        "value": "附則",
+    },
+}
 
 # =================================================================
 # 1.5. 目・細目の参照表記ルール（実装は後で移行）
@@ -106,3 +147,61 @@ def get_xml_tag_meta_by_depth(depth: ArticleDepth) -> dict:
         if meta.get("depth") == depth:
             return meta
     raise KeyError(depth)
+
+
+# =================================================================
+# 3. TOC階層ごとのXMLタグ知識
+# =================================================================
+TOC_XML_TAG_MAP = {
+    "part": {
+        "depth": TocDepth.PART,
+        "tag_name": "TOCPart",
+        "body_tag": TocDepth.PART.tag_name,
+        "title_tag": "PartTitle",
+    },
+    "chapter": {
+        "depth": TocDepth.CHAPTER,
+        "tag_name": "TOCChapter",
+        "body_tag": TocDepth.CHAPTER.tag_name,
+        "title_tag": "ChapterTitle",
+    },
+    "section": {
+        "depth": TocDepth.SECTION,
+        "tag_name": "TOCSection",
+        "body_tag": TocDepth.SECTION.tag_name,
+        "title_tag": "SectionTitle",
+    },
+    "subsection": {
+        "depth": TocDepth.SUB_SECTION,
+        "tag_name": "TOCSubsection",
+        "body_tag": TocDepth.SUB_SECTION.tag_name,
+        "title_tag": "SubsectionTitle",
+    },
+    "division": {
+        "depth": TocDepth.DIVISION,
+        "tag_name": "TOCDivision",
+        "body_tag": TocDepth.DIVISION.tag_name,
+        "title_tag": "DivisionTitle",
+    },
+}
+
+
+def get_toc_xml_tag_meta_by_depth(depth: TocDepth) -> dict:
+    for meta in TOC_XML_TAG_MAP.values():
+        if meta.get("depth") == depth:
+            return meta
+    raise KeyError(depth)
+
+
+def get_toc_xml_tag_meta_by_toc_tag(tag_name: str) -> dict:
+    for meta in TOC_XML_TAG_MAP.values():
+        if meta.get("tag_name") == tag_name:
+            return meta
+    raise KeyError(tag_name)
+
+
+def get_toc_xml_tag_meta_by_body_tag(tag_name: str) -> dict:
+    for meta in TOC_XML_TAG_MAP.values():
+        if meta.get("body_tag") == tag_name:
+            return meta
+    raise KeyError(tag_name)

@@ -12,7 +12,7 @@ class LawLibrary:
     @classmethod
     def register(cls, law_type: LawType, id_list: list[str]):
         """XML解析の初期段階で、IDの並び順を登録する"""
-        cls._indices[law_type] = ArticleIndex(id_list)
+        cls._indices[law_type] = ArticleIndex.from_article_ids(id_list)
 
     @classmethod
     def get_index(cls, law_type: LawType) -> ArticleIndex:

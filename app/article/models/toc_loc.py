@@ -1,82 +1,71 @@
-# models/toc_loc.py
-from enum import Enum
+# app/article/models/toc_loc.py
 from dataclasses import dataclass
-from bs4.element import Tag
 
-
-class TocDepth(Enum):
-    # (内部数値, 本文用タグ名, 目次用タグ名, 日本語名)
-    PART = (0, "Part", "TOCPart", "編")
-    CHAPTER = (1, "Chapter", "TOCChapter", "章")
-    SECTION = (2, "Section", "TOCSection", "節")
-    SUB_SECTION = (3, "Subsection", "TOCSubsection", "款")
-    DIVISION = (4, "Division", "TOCDivision", "目")
-
-    def __init__(self, index, body_tag, toc_tag, label_jp):
-        self.index = index
-        self.body_tag = body_tag
-        self.toc_tag = toc_tag
-        self.label_jp = label_jp
-
-    @property
-    def value_index(self) -> int:
-        return self.index
-
-    @classmethod
-    def from_toc_tag(cls, tag_name: str):
-        """TOCChapter 等のタグ名から Enum を特定する"""
-        for depth in cls:
-            if depth.toc_tag == tag_name:
-                return depth
-        return None
-
-    @classmethod
-    def from_index(cls, index: int):
-        """数値(0-4)から該当するEnumを返す"""
-        for depth in cls:
-            if depth.index == index:
-                return depth
-        return None
-
-    @classmethod
-    def from_body_tag(cls, tag_name: str):
-        """Chapter 等の本文タグ名から Enum を特定する"""
-        for depth in cls:
-            if depth.body_tag == tag_name:
-                return depth
-        return None
+from app.article.constants.enums import LawType, TocDepth
 
 
 @dataclass(frozen=True)
 class TocLocation:
-    # パス自体は文字列のタプル（書き換え不可）
+    """
+    法典内の目次上の相対住所。
+
+    part.chapter.section.sub_section.division の5枠を固定で持つ。
+    編を持たない法典では、先頭の part 枠は "0" のままになる。
+    """
+
     path: tuple[str, str, str, str, str] = ("0", "0", "0", "0", "0")
 
-    @classmethod
-    def from_article_node(cls, article_node: Tag) -> "TocLocation":
-        temp_path = ["0"] * 5
-        current = article_node.parent
-
-        while current is not None:
-            # TocDepth.from_body_tag などを使って判定
-            depth = TocDepth.from_body_tag(current.name)
-            if depth:
-                # Enumの index (0〜4) を使ってパスを埋める
-                temp_path[depth.index] = current.get("Num", "0")
-            current = current.parent
-
-        return cls(tuple(temp_path))
+    def get_path_index(self, depth: TocDepth) -> str:
+        """指定されたTOC階層の現在値を取得する。"""
+        return self.path[depth.index]
 
     def set_at(self, depth: TocDepth, value: str) -> "TocLocation":
-        new_path = list(self.path)
-        new_path[depth.index] = value
+        """指定TOC階層に値を入れ、それより下位の階層をリセットする。"""
+        path_list = list(self.path)
+        path_list[depth.index] = str(value)
 
-        # 下位リセット（ここがこのクラスの肝ですね！）
-        for i in range(depth.index + 1, 5):
-            new_path[i] = "0"
+        for index in range(depth.index + 1, len(path_list)):
+            path_list[index] = "0"
 
-        return TocLocation(tuple(new_path))
+        return TocLocation(path=tuple(path_list))
+
+    @property
+    def depth(self) -> TocDepth | None:
+        """現在値が入っている最下層のTOC階層を返す。"""
+        for index in range(len(self.path) - 1, -1, -1):
+            if self.path[index] != "0":
+                return TocDepth.from_index(index)
+        return None
 
     @property
     def addr(self) -> str:
+        """part.chapter.section.sub_section.division 形式の文字列を返す。"""
         return ".".join(self.path)
+
+
+@dataclass(frozen=True)
+class FullTocLocation:
+    """法典情報を含むTOC上の絶対住所。"""
+
+    law_type: LawType
+    relative_loc: TocLocation
+
+    def update_relative(self, depth: TocDepth, value: str) -> "FullTocLocation":
+        """指定TOC階層を更新した新しい FullTocLocation を返す。"""
+        return FullTocLocation(
+            law_type=self.law_type,
+            relative_loc=self.relative_loc.set_at(depth, value),
+        )
+
+    @property
+    def id_attr(self) -> str:
+        """law.short_name と TocLocation.addr を連結した純粋なTOC座標文字列を返す。"""
+        return f"{self.law_type.short_name}.{self.relative_loc.addr}"
+
+    def to_dict(self) -> dict:
+        return {
+            "law_short_name": self.law_type.short_name,
+            "law_name_jp": self.law_type.name_jp,
+            "relative_loc": self.relative_loc.addr,
+            "id_attr": self.id_attr,
+        }

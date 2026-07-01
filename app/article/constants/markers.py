@@ -6,8 +6,6 @@ class ReferenceMarker:
     SAME_LAW = "same_law"
     LAW_SUFFIX = "law"
 
-    # 範囲指定（前○条など）の識別子
-    RANGE_SUFFIX = "_range"
-
     # 各号などのループ識別子
     EACH = "each"
+    RANGE_SUFFIX = "*"

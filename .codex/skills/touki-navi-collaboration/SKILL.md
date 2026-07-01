@@ -15,3 +15,4 @@ Follow these project-specific collaboration rules:
 - Keep explanations beginner-friendly for someone familiar with ChatGPT but new to Codex.
 - When creating a new module, add its repository path as the first line comment, such as `# app/article/parser/xml_loader.py`, so the user can refer to modules easily.
 - Treat half-width characters inside original Japanese legal XML `Sentence` text as system-added marks or metadata only; official Japanese legal text should be assumed to use full-width characters.
+- Prefix files, classes, or modules planned for deletion or kept only as old implementations with `___`, and do not import `___`-prefixed items from new code.

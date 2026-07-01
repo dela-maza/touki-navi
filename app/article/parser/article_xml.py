@@ -6,10 +6,11 @@ from app.article.constants.xml_tags import XML_TAG_MAP, ATTR_NUM, TAG_COLUMN, TA
 from app.article.models.article_loc import FullLocation, ArticleLocation
 from app.article.models.sentence import Sentence, BlockSentenceBase, PlainBlockSentence, ColumnBlockSentence
 from app.article.models.article import Article, Paragraph, Item, Subitem1, Subitem2
+from app.article.reference.chunker import ReferenceChunker
 
 
 # =================================================================
-# ArticleXMLParser の役割と関数チェーン
+# ArticleXml の役割と関数チェーン
 # =================================================================
 # このモジュールの責務は、法令XMLの <Article> 以下を Python の Article モデルツリーへ変換すること。
 # 参照解決（前条・同項などの意味解釈）や画面表示用HTML化は、ここでは行わない。
@@ -53,25 +54,32 @@ from app.article.models.article import Article, Paragraph, Item, Subitem1, Subit
 # =================================================================
 
 
-class ArticleXMLParser:
-    @staticmethod
-    def parse_articles(law_body_node: Tag, law_type: LawType) -> List[Article]:
+class ArticleXml:
+    def __init__(self, law_type: LawType):
+        self.law_type = law_type
+        self.element_locations_by_article: dict[str, list[FullLocation]] = {}
+        self._current_element_locations: list[FullLocation] = []
+
+    def parse_articles(self, law_body_node: Tag) -> List[Article]:
         """
         <LawBody> を直接受け取り、内包される全ての <Article> をパースして返す。
         """
+        self.element_locations_by_article = {}
+
         # 💡 マップから "Article" というタグ名を引いて検索をかける
         article_tag_name = XML_TAG_MAP["article"]["tag_name"]
         article_nodes: List[Tag] = law_body_node.find_all(article_tag_name, recursive=True)
         articles: List[Article] = []
 
         for article_node in article_nodes:
-            art: Article = ArticleXMLParser._parse_single_article(article_node, law_type)
+            self._current_element_locations = []
+            art: Article = self._parse_single_article(article_node)
+            self.element_locations_by_article[art.num] = list(self._current_element_locations)
             articles.append(art)
 
         return articles
 
-    @staticmethod
-    def _parse_single_article(node: Tag, law_type: LawType) -> Article:
+    def _parse_single_article(self, node: Tag) -> Article:
         """
         単一の <Article> ノードから Article オブジェクトを構築する。
         """
@@ -91,7 +99,7 @@ class ArticleXMLParser:
 
         # articleのlocation値
         base_location: FullLocation = FullLocation(
-            law_type=law_type,
+            law_type=self.law_type,
             article_num=article_num,
             relative_loc=ArticleLocation()
         )
@@ -108,29 +116,30 @@ class ArticleXMLParser:
         for pg_node in node.find_all(pg_tag["tag_name"], recursive=False):
             pg_num: str = pg_node.get(ATTR_NUM, '1')  # <Paragraph Num="1">
             pg_location: FullLocation = base_location.update_relative(ArticleDepth.PARAGRAPH, pg_num)
+            self._current_element_locations.append(pg_location)
 
             # 💡 号から下の箇条書き世界は、完全に構造が統一されたツリーなので再帰に流し込む
-            items = ArticleXMLParser._parse_list_tree(pg_node, ArticleDepth.ITEM, pg_location)
+            items = self._parse_list_tree(pg_node, ArticleDepth.ITEM, pg_location)
 
             pg_element = Paragraph(
                 num=pg_num,
                 location=pg_location,
-                body=ArticleXMLParser._parse_block_sentence(pg_node, pg_tag["wrapper_tag"]),
+                body=self._parse_block_sentence(pg_node, pg_tag["wrapper_tag"]),
                 items=items
             )
             paragraphs.append(pg_element)
 
         return Article(
             num=article_num,
-            law_type=law_type,
+            law_type=self.law_type,
             title=article_title,
             caption=article_caption,
             paragraphs=paragraphs
         )
 
 
-    @staticmethod
-    def _parse_list_tree(parent_node: Tag,
+    def _parse_list_tree(self,
+                         parent_node: Tag,
                          current_depth: Optional[ArticleDepth],
                          current_loc: FullLocation) -> List[Any]:
         """
@@ -140,13 +149,13 @@ class ArticleXMLParser:
         if current_depth is None:
             return []
 
-        elements: list[ArticleXMLParser] = []
+        elements: list[Any] = []
         # 外部化された定数マップから、現在の階層に対応するパース知識を完全ハッシュ引き
         meta: dict = get_xml_tag_meta_by_depth(current_depth)
 
         for child_node in parent_node.find_all(meta["tag_name"], recursive=False):
             elements.append(
-                ArticleXMLParser._parse_list_element(
+                self._parse_list_element(
                     child_node=child_node,
                     current_depth=current_depth,
                     current_loc=current_loc,
@@ -156,8 +165,7 @@ class ArticleXMLParser:
 
         return elements
 
-    @staticmethod
-    def _parse_block_sentence(element_node: Tag, wrapper_tag_name: str) -> BlockSentenceBase:
+    def _parse_block_sentence(self, element_node: Tag, wrapper_tag_name: str) -> BlockSentenceBase:
         """
         ParagraphSentenceやItemSentenceなどの境界（スコープ）を絶対に無視せず、
         Columnの有無によって『Plain』と『Column』の器へ完全分離して格納する。
@@ -179,7 +187,7 @@ class ArticleXMLParser:
                 # その Column の中にある Sentence だけを回収（他流の混入を防ぐため recursive=False）
                 st_list: list[Sentence] = []
                 for st_node in col_node.find_all(TAG_SENTENCE, recursive=False):
-                    st_list.append(Sentence(num=st_node.get(ATTR_NUM, '1'), text=st_node.get_text()))
+                    st_list.append(self._create_sentence(st_node))
 
                 columns_map[col_idx] = st_list
 
@@ -190,33 +198,43 @@ class ArticleXMLParser:
             plain_list: list[Sentence] = []
             # ラッパー直下の Sentence タグだけを素直に回収
             for st_node in wrapper_node.find_all(TAG_SENTENCE, recursive=False):
-                plain_list.append(Sentence(num=st_node.get(ATTR_NUM, '1'), text=st_node.get_text()))
+                plain_list.append(self._create_sentence(st_node))
 
             return PlainBlockSentence(sentences=plain_list)
 
-
-
     @staticmethod
-    def _parse_list_element(child_node: Tag, current_depth: ArticleDepth, current_loc: FullLocation, meta: dict) -> Any:
+    def _create_sentence(st_node: Tag) -> Sentence:
+        """
+        <Sentence> ノードから Sentence を生成し、物理レイヤの marked_text まで作る。
+        """
+        raw_text = st_node.get_text()
+        return Sentence(
+            num=st_node.get(ATTR_NUM, '1'),
+            text=raw_text,
+            marked_text=ReferenceChunker.to_chunked_str(raw_text),
+        )
+
+    def _parse_list_element(self, child_node: Tag, current_depth: ArticleDepth, current_loc: FullLocation, meta: dict) -> Any:
         """
         Item / Subitem1 / Subitem2 のうち、現在階層に対応する1ノードを読み取り、
         本文・子要素・座標を含んだモデルへ変換する。
         """
         num_str = child_node.get(ATTR_NUM, '')
         next_loc = current_loc.update_relative(current_depth, num_str)
+        self._current_element_locations.append(next_loc)
 
         # 次の階層のEnumを動的に進める（ITEM ➔ SUB_ITEM_1 ➔ SUB_ITEM_2 ➔ None）
-        next_depth = ArticleXMLParser._next_depth(current_depth)
+        next_depth = self._next_depth(current_depth)
 
         # 再帰の力により、さらに深い下流階層の子供たちをドミノ式に自動回収
-        children = ArticleXMLParser._parse_list_tree(child_node, next_depth, next_loc)
+        children = self._parse_list_tree(child_node, next_depth, next_loc)
 
         title_node = child_node.find(meta["title_tag"], recursive=False)
         title_text = title_node.get_text() if title_node else ""
 
-        body = ArticleXMLParser._parse_block_sentence(child_node, meta["wrapper_tag"])
+        body = self._parse_block_sentence(child_node, meta["wrapper_tag"])
 
-        return ArticleXMLParser._create_list_element(
+        return self._create_list_element(
             depth=current_depth,
             num=num_str,
             title=title_text,

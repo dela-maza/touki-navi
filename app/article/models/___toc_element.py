@@ -1,7 +1,7 @@
-# models/toc_element.py
+# app/article/models/___toc_element.py
 from dataclasses import dataclass, field
 from typing import List
-from app.article.models.toc_loc import TocDepth, TocLocation  # TocLocationを追加
+from app.article.models.___toc_loc import TocDepth, TocLocation  # TocLocationを追加
 
 @dataclass
 class TOCElement:

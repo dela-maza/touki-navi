@@ -1,13 +1,18 @@
 # touki-navi/models/sentence.py
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional
+from typing import Dict, List, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.article.models.reference import Reference
 
 @dataclass
 class Sentence:
     """<Sentence> タグそのものを表す、末端の最小テキストコンテナ"""
     num: str
     text: str
+    marked_text: str = ""
+    references: List["Reference"] = field(default_factory=list)
     # writing_mode: str = "vertical"
 
 class BlockSentenceBase(ABC):

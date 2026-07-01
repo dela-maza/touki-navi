@@ -1,5 +1,6 @@
 # common/law_utiles.py
 import re
+
 from kanjize import kanji2number
 import unicodedata
 from app.article.models.article_loc import ArticleDepth

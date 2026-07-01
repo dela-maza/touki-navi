@@ -1,10 +1,10 @@
-# touki-navi/parser/toc_parser.py
+# app/article/parser/___toc_parser.py
 
 from bs4.element import Tag
 from typing import List
-from app.article.models.toc_loc import TocDepth
-from app.article.models.toc_element import TOCElement
-from app.article.models.toc_loc import TocLocation
+from app.article.models.___toc_loc import TocDepth
+from app.article.models.___toc_element import TOCElement
+from app.article.models.___toc_loc import TocLocation
 
 class TOCParser:
     def __init__(self, toc_root: Tag):
