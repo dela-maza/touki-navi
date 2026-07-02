@@ -1,5 +1,5 @@
 # app/article/reference/resolver/token_group_location.py
-from app.article.models.article_loc import FullLocation
+from app.article.models.article_loc import AbsoluteArticleLocation
 from app.article.models.index import ArticleElementLocationIndex, ArticleIndex
 from app.article.reference.resolver.range_loc import RangeLocationResolver
 from app.article.reference.resolver.shift_loc import ShiftLocationResolver
@@ -22,12 +22,12 @@ class TokenGroupLocation:
         self.shift_resolver = ShiftLocationResolver(article_index=article_index, element_index=element_index)
         self.range_resolver = RangeLocationResolver(article_index=article_index, element_index=element_index)
 
-    def create_locations_by_base_location(self, base_location: FullLocation, token_group: TokenGroup) -> list[FullLocation]:
+    def create_locations_by_base_location(self, base_location: AbsoluteArticleLocation, token_group: TokenGroup) -> list[AbsoluteArticleLocation]:
         """base_location を起点に、TokenGroup の順序どおり location 候補を作る。"""
-        locations: list[FullLocation] = [base_location]
+        locations: list[AbsoluteArticleLocation] = [base_location]
 
         for token in token_group.tokens:
-            next_locations: list[FullLocation] = []
+            next_locations: list[AbsoluteArticleLocation] = []
             for location in locations:
                 next_locations.extend(self._create_locations_from_token(location, token))
             locations = next_locations
@@ -37,7 +37,7 @@ class TokenGroupLocation:
 
         return locations
 
-    def _create_locations_from_token(self, location: FullLocation, token: TokenBase) -> list[FullLocation]:
+    def _create_locations_from_token(self, location: AbsoluteArticleLocation, token: TokenBase) -> list[AbsoluteArticleLocation]:
         """Token の派生クラスに応じて、対応する resolver を一つだけ呼び出す。"""
         if isinstance(token, LocationToken):
             return [token.resolve_location(location)]

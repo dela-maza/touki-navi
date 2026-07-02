@@ -1,7 +1,7 @@
 # app/article/constants/xml_tags.py
 import re
 import unicodedata
-from app.article.constants.enums import ArticleDepth, HintMark, InlineMarkKind, QualifierMark, TocDepth
+from app.article.constants.enums import ArticleDepth, TocDepth
 
 # =================================================================
 # 1. 階層を問わず、法令XML全体で不動の「コア仕様」定数
@@ -14,42 +14,6 @@ TAG_TOC_LABEL = "TOCLabel"
 TAG_TOC_SUPPL_PROVISION = "TOCSupplProvision"
 TAG_SUPPL_PROVISION_LABEL = "SupplProvisionLabel"
 TAG_ARTICLE_RANGE = "ArticleRange"
-
-# =================================================================
-# 1.25. location ではないが意味を持つ本文中マーク
-# =================================================================
-SEMANTIC_MARK_MAP = {
-    "ただし書": {
-        "kind": InlineMarkKind.QUALIFIER,
-        "value": QualifierMark.PROVISO.value,
-    },
-    "ただし書き": {
-        "kind": InlineMarkKind.QUALIFIER,
-        "value": QualifierMark.PROVISO.value,
-    },
-    "本文": {
-        "kind": InlineMarkKind.QUALIFIER,
-        "value": QualifierMark.MAIN_TEXT.value,
-    },
-    "前段": {
-        "kind": InlineMarkKind.QUALIFIER,
-        "value": QualifierMark.FIRST_PART.value,
-    },
-    "後段": {
-        "kind": InlineMarkKind.QUALIFIER,
-        "value": QualifierMark.LATTER_PART.value,
-    },
-    "本則": {
-        "kind": InlineMarkKind.HINT,
-        "key": HintMark.PART.value,
-        "value": "本則",
-    },
-    "附則": {
-        "kind": InlineMarkKind.HINT,
-        "key": HintMark.PART.value,
-        "value": "附則",
-    },
-}
 
 # =================================================================
 # 1.5. 目・細目の参照表記ルール（実装は後で移行）

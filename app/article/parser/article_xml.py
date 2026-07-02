@@ -3,7 +3,7 @@ from typing import List, Optional, Dict, Any
 from bs4 import Tag
 from app.article.constants.enums import LawType, ArticleDepth
 from app.article.constants.xml_tags import XML_TAG_MAP, ATTR_NUM, TAG_COLUMN, TAG_SENTENCE, get_xml_tag_meta_by_depth
-from app.article.models.article_loc import FullLocation, ArticleLocation
+from app.article.models.article_loc import AbsoluteArticleLocation, ArticleInnerLocation
 from app.article.models.sentence import Sentence, BlockSentenceBase, PlainBlockSentence, ColumnBlockSentence
 from app.article.models.article import Article, Paragraph, Item, Subitem1, Subitem2
 from app.article.reference.chunker import ReferenceChunker
@@ -57,8 +57,8 @@ from app.article.reference.chunker import ReferenceChunker
 class ArticleXml:
     def __init__(self, law_type: LawType):
         self.law_type = law_type
-        self.element_locations_by_article: dict[str, list[FullLocation]] = {}
-        self._current_element_locations: list[FullLocation] = []
+        self.element_locations_by_article: dict[str, list[AbsoluteArticleLocation]] = {}
+        self._current_element_locations: list[AbsoluteArticleLocation] = []
 
     def parse_articles(self, law_body_node: Tag) -> List[Article]:
         """
@@ -98,10 +98,10 @@ class ArticleXml:
         article_title: str = title_node.get_text() if title_node else ""
 
         # articleのlocation値
-        base_location: FullLocation = FullLocation(
+        base_location: AbsoluteArticleLocation = AbsoluteArticleLocation(
             law_type=self.law_type,
             article_num=article_num,
-            relative_loc=ArticleLocation()
+            inner_loc=ArticleInnerLocation()
         )
 
         # =================================================================
@@ -115,7 +115,7 @@ class ArticleXml:
         # 💡 pg_tag["tag_name"] の辞書引き形式に修正してバグを回避
         for pg_node in node.find_all(pg_tag["tag_name"], recursive=False):
             pg_num: str = pg_node.get(ATTR_NUM, '1')  # <Paragraph Num="1">
-            pg_location: FullLocation = base_location.update_relative(ArticleDepth.PARAGRAPH, pg_num)
+            pg_location: AbsoluteArticleLocation = base_location.update_inner_location(ArticleDepth.PARAGRAPH, pg_num)
             self._current_element_locations.append(pg_location)
 
             # 💡 号から下の箇条書き世界は、完全に構造が統一されたツリーなので再帰に流し込む
@@ -141,7 +141,7 @@ class ArticleXml:
     def _parse_list_tree(self,
                          parent_node: Tag,
                          current_depth: Optional[ArticleDepth],
-                         current_loc: FullLocation) -> List[Any]:
+                         current_loc: AbsoluteArticleLocation) -> List[Any]:
         """
         【SubDivisionBase 専用】
         号 ➔ 目1 ➔ 目2 へと、同じListItemの性質だけを例外処理ゼロで全自動回収する
@@ -214,13 +214,13 @@ class ArticleXml:
             marked_text=ReferenceChunker.to_chunked_str(raw_text),
         )
 
-    def _parse_list_element(self, child_node: Tag, current_depth: ArticleDepth, current_loc: FullLocation, meta: dict) -> Any:
+    def _parse_list_element(self, child_node: Tag, current_depth: ArticleDepth, current_loc: AbsoluteArticleLocation, meta: dict) -> Any:
         """
         Item / Subitem1 / Subitem2 のうち、現在階層に対応する1ノードを読み取り、
         本文・子要素・座標を含んだモデルへ変換する。
         """
         num_str = child_node.get(ATTR_NUM, '')
-        next_loc = current_loc.update_relative(current_depth, num_str)
+        next_loc = current_loc.update_inner_location(current_depth, num_str)
         self._current_element_locations.append(next_loc)
 
         # 次の階層のEnumを動的に進める（ITEM ➔ SUB_ITEM_1 ➔ SUB_ITEM_2 ➔ None）
@@ -255,7 +255,7 @@ class ArticleXml:
             depth: ArticleDepth,
             num: str,
             title: str,
-            location: FullLocation,
+            location: AbsoluteArticleLocation,
             body: BlockSentenceBase,
             children: List[Any],
     ) -> Any:

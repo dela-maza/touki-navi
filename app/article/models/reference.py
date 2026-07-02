@@ -1,6 +1,8 @@
 # app/article/models/reference.py
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+from app.article.models.article_loc import AbsoluteArticleLocation
+from app.article.reference.resolver.locator_vector import LocatorVector
 from app.article.reference.resolver.token import TokenGroup
 
 
@@ -18,9 +20,5 @@ class Reference:
     raw_text: str
     arabic_text: str
     token_group: TokenGroup
-    # vector: LocatorVector | None = None
-    start_index: int = 0
-    end_index: int = 0
-    gap_before_text: str = ""
-    base_axis: str | None = None
-    semantic_mark_text: str | None = None
+    vector: LocatorVector | None = None
+    locations: list[AbsoluteArticleLocation] = field(default_factory=list)

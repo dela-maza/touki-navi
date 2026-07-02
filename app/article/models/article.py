@@ -2,7 +2,7 @@
 from dataclasses import dataclass, field, replace
 from typing import List, Any
 from app.article.constants.enums import LawType
-from app.article.models.article_loc import FullLocation, ArticleLocation
+from app.article.models.article_loc import AbsoluteArticleLocation, ArticleInnerLocation
 from app.article.models.sentence import BlockSentenceBase
 
 # =================================================================
@@ -15,7 +15,7 @@ class SubDivisionBase:
     """
     num: str                  # XML属性のNum（例: "1", "1_2"）
     title: str                # 画面表示用タイトル（例: "一", "イ", "（１）"）
-    location: FullLocation    # 空文字パディング行列が入った絶対座標
+    location: AbsoluteArticleLocation    # 空文字パディング行列が入った絶対座標
     body: BlockSentenceBase   # ABCで定義された、Columnの有無を隠蔽した文章ブロック
 
 
@@ -74,7 +74,7 @@ class Paragraph:
     箇条書き（SubDivisionBase）とは完全に分離された、条文直下の絶対的独立ブロック。
     """
     num: str
-    location: FullLocation
+    location: AbsoluteArticleLocation
     body: BlockSentenceBase
     items: List[Item] = field(default_factory=list)
 
@@ -104,11 +104,11 @@ class Article:
     paragraphs: List[Paragraph]
 
     @property
-    def location(self) -> FullLocation:
-        return FullLocation(
+    def location(self) -> AbsoluteArticleLocation:
+        return AbsoluteArticleLocation(
             law_type=self.law_type,
             article_num=self.num,
-            relative_loc=ArticleLocation()
+            inner_loc=ArticleInnerLocation()
         )
 
     @property

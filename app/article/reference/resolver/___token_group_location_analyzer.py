@@ -1,7 +1,7 @@
 # app/article/reference/resolver/token_group_location_analyzer.py
 import re
 
-from app.article.models.article_loc import FullLocation
+from app.article.models.article_loc import AbsoluteArticleLocation
 from app.article.models.index import ArticleElementLocationIndex, ArticleIndex
 from app.article.models.reference import Reference
 from app.article.models.sentence import Sentence
@@ -30,8 +30,8 @@ class TokenGroupLocationAnalyzer:
     def resolve_sentence(
             self,
             sentence: Sentence,
-            this_sentence_location: FullLocation,
-            last_ref_location: FullLocation | None = None,
+            this_sentence_location: AbsoluteArticleLocation,
+            last_ref_location: AbsoluteArticleLocation | None = None,
     ) -> list[Reference]:
         """Sentence から参照 mark を抽出し、Reference の一覧を返す。"""
         if not sentence.marked_text:
@@ -44,8 +44,8 @@ class TokenGroupLocationAnalyzer:
     def resolve_text(
             self,
             marked_text: str,
-            this_sentence_location: FullLocation,
-            last_ref_location: FullLocation | None = None,
+            this_sentence_location: AbsoluteArticleLocation,
+            last_ref_location: AbsoluteArticleLocation | None = None,
     ) -> list[Reference]:
         """marked_text 内の {...} を左から順に Reference へ変換する。"""
         references: list[Reference] = []
@@ -65,8 +65,8 @@ class TokenGroupLocationAnalyzer:
     def _resolve_mark(
             self,
             raw_mark: str,
-            this_sentence_location: FullLocation,
-            last_ref_location: FullLocation | None,
+            this_sentence_location: AbsoluteArticleLocation,
+            last_ref_location: AbsoluteArticleLocation | None,
     ) -> Reference:
         """1個の {...} から TokenGroup を作り、二軸の絶対座標リストを生成する。"""
         _, _, locator_part = self._split_mark(raw_mark)
@@ -88,9 +88,9 @@ class TokenGroupLocationAnalyzer:
 
     @staticmethod
     def _create_locations_by_base_location(
-            base_location: FullLocation,
+            base_location: AbsoluteArticleLocation,
             token_group: TokenGroup,
-    ) -> list[FullLocation]:
+    ) -> list[AbsoluteArticleLocation]:
         """
         base_location と TokenGroup から FullLocation 候補を生成する。
 
@@ -101,7 +101,7 @@ class TokenGroupLocationAnalyzer:
         merged_vector = locator_vector.merge_base_location(base_location)
         if any(LocatorVector._is_spread_cell(cell) for cell in merged_vector.path):
             return []
-        return [FullLocation(path=merged_vector.path)]
+        return [AbsoluteArticleLocation(path=merged_vector.path)]
 
     @staticmethod
     def _split_mark(raw_mark: str) -> tuple[str, str, str]:
@@ -114,8 +114,8 @@ class TokenGroupLocationAnalyzer:
     @staticmethod
     def _next_last_ref_location(
             reference: Reference,
-            current_last_ref_location: FullLocation | None,
-    ) -> FullLocation | None:
+            current_last_ref_location: AbsoluteArticleLocation | None,
+    ) -> AbsoluteArticleLocation | None:
         """
         次の参照 mark が使う last_ref_location を決める。
 

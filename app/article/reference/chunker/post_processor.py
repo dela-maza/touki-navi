@@ -1,8 +1,14 @@
 # app/article/reference/chunker/post_processor.py
 import re
 
-from app.article.constants.enums import InlineMarkKind
-from app.article.constants.xml_tags import SEMANTIC_MARK_MAP
+from app.article.constants.inline_marks import (
+    CONNECTOR_TEXTS,
+    INLINE_MARK_CONNECTOR,
+    INLINE_MARK_QUALIFIER,
+    INLINE_MARK_RANGE_CONNECTOR,
+    RANGE_CONNECTOR_TEXTS,
+    REFERENCE_QUALIFIER_TEXTS,
+)
 
 
 class ReferencePostProcessor:
@@ -17,8 +23,7 @@ class ReferencePostProcessor:
         """
         processed = cls.apply_affix_corrections(text)
         processed = cls.apply_reference_qualifier_marks(processed)
-        processed = cls.apply_hint_marks(processed)
-        return processed
+        return cls.apply_reference_connector_marks(processed)
 
     @classmethod
     def apply_affix_corrections(cls, text: str) -> str:
@@ -40,55 +45,29 @@ class ReferencePostProcessor:
     def apply_reference_qualifier_marks(cls, text: str) -> str:
         """3枠 reference mark の直後に続く qualifier だけを <q=...> にする。"""
         processed = text
-        for raw_text, mark in cls._qualifier_replacements():
-            pattern = r"(\{[^{}]*})" + re.escape(raw_text)
-            processed = re.sub(pattern, r"\1" + mark, processed)
+        for raw_text in REFERENCE_QUALIFIER_TEXTS:
+            pattern = r"}" + re.escape(raw_text)
+            processed = re.sub(pattern, "}" + f"<{INLINE_MARK_QUALIFIER}={raw_text}>", processed)
         return processed
 
     @classmethod
-    def apply_hint_marks(cls, text: str) -> str:
-        """UI / semantic hint 用の語を <h=...> にする。"""
-        processed = text
-        placeholders: list[tuple[str, str]] = []
-
-        for index, (raw_text, meta) in enumerate(cls._hint_items()):
-            placeholder = f"@@HINT_MARK_{index}@@"
-            mark = cls._pack_inline_mark(meta)
-            processed = re.sub(re.escape(raw_text), placeholder, processed)
-            placeholders.append((placeholder, mark))
-
-        for placeholder, mark in placeholders:
-            processed = processed.replace(placeholder, mark)
-
-        return processed
+    def apply_reference_connector_marks(cls, text: str) -> str:
+        """3枠 reference mark 同士の間にある connector だけを <c=...> / <r=...> にする。"""
+        return re.sub(r"}(.+?){", cls._replace_connector_gap, text)
 
     @classmethod
-    def _qualifier_replacements(cls) -> list[tuple[str, str]]:
-        replacements: list[tuple[str, str]] = []
-        for raw_text, meta in cls._qualifier_items():
-            replacements.append((raw_text, cls._pack_inline_mark(meta)))
-        return replacements
+    def _replace_connector_gap(cls, match: re.Match) -> str:
+        """`}.+?{` で囲まれた gap 内の connector だけを mark する。"""
+        gap_text = match.group(1)
+        marked_gap = cls._mark_connector_texts(gap_text)
+        return "}" + marked_gap + "{"
 
-    @staticmethod
-    def _qualifier_items() -> list[tuple[str, dict]]:
-        return [
-            (raw_text, meta)
-            for raw_text, meta in sorted(SEMANTIC_MARK_MAP.items(), key=lambda item: len(item[0]), reverse=True)
-            if meta["kind"] == InlineMarkKind.QUALIFIER
-        ]
-
-    @staticmethod
-    def _hint_items() -> list[tuple[str, dict]]:
-        return [
-            (raw_text, meta)
-            for raw_text, meta in sorted(SEMANTIC_MARK_MAP.items(), key=lambda item: len(item[0]), reverse=True)
-            if meta["kind"] == InlineMarkKind.HINT
-        ]
-
-    @staticmethod
-    def _pack_inline_mark(meta: dict) -> str:
-        """SEMANTIC_MARK_MAP の定義から <q=...> / <h=key:value> を生成する。"""
-        kind = meta["kind"].value
-        if "key" in meta:
-            return f"<{kind}={meta['key']}:{meta['value']}>"
-        return f"<{kind}={meta['value']}>"
+    @classmethod
+    def _mark_connector_texts(cls, gap_text: str) -> str:
+        """Reference 間の gap に含まれる connector 文字列を mark に置換する。"""
+        marked = gap_text
+        for connector in RANGE_CONNECTOR_TEXTS:
+            marked = re.sub(re.escape(connector), f"<{INLINE_MARK_RANGE_CONNECTOR}={connector}>", marked)
+        for connector in CONNECTOR_TEXTS:
+            marked = re.sub(re.escape(connector), f"<{INLINE_MARK_CONNECTOR}={connector}>", marked)
+        return marked

@@ -4,10 +4,10 @@ from dataclasses import dataclass
 
 from app.article.constants.enums import LawType
 from app.article.models.article import Article, Item, Subitem1, Subitem2
-from app.article.models.article_loc import FullLocation
+from app.article.models.article_loc import AbsoluteArticleLocation
 from app.article.models.index import ArticleIndex
-from app.article.models.reference_group import SentenceReferenceGroup
 from app.article.models.sentence import BlockSentenceBase, ColumnBlockSentence, PlainBlockSentence, Sentence
+from app.article.reference.group import SentenceReferenceGroup
 
 
 @dataclass
@@ -38,25 +38,25 @@ class ArticleBuilder:
             )
             sentence.references = reference_group.references
 
-    def _iter_article_sentences(self, article: Article) -> Iterator[tuple[Sentence, FullLocation]]:
+    def _iter_article_sentences(self, article: Article) -> Iterator[tuple[Sentence, AbsoluteArticleLocation]]:
         """Article 配下の Sentence を、Sentence を所有する location と一緒に上から順番に返す。"""
         for paragraph in article.paragraphs:
             yield from self._iter_block_sentences(paragraph.body, paragraph.location)
             yield from self._iter_item_sentences(paragraph.items)
 
-    def _iter_item_sentences(self, items: list[Item]) -> Iterator[tuple[Sentence, FullLocation]]:
+    def _iter_item_sentences(self, items: list[Item]) -> Iterator[tuple[Sentence, AbsoluteArticleLocation]]:
         """Item 以下の Sentence を、Item -> Subitem1 -> Subitem2 の順に返す。"""
         for item in items:
             yield from self._iter_block_sentences(item.body, item.location)
             yield from self._iter_subitem1_sentences(item.children)
 
-    def _iter_subitem1_sentences(self, subitems: list[Subitem1]) -> Iterator[tuple[Sentence, FullLocation]]:
+    def _iter_subitem1_sentences(self, subitems: list[Subitem1]) -> Iterator[tuple[Sentence, AbsoluteArticleLocation]]:
         """Subitem1 以下の Sentence を、Subitem1 -> Subitem2 の順に返す。"""
         for subitem in subitems:
             yield from self._iter_block_sentences(subitem.body, subitem.location)
             yield from self._iter_subitem2_sentences(subitem.children)
 
-    def _iter_subitem2_sentences(self, subitems: list[Subitem2]) -> Iterator[tuple[Sentence, FullLocation]]:
+    def _iter_subitem2_sentences(self, subitems: list[Subitem2]) -> Iterator[tuple[Sentence, AbsoluteArticleLocation]]:
         """Subitem2 が持つ Sentence を返す。"""
         for subitem in subitems:
             yield from self._iter_block_sentences(subitem.body, subitem.location)
@@ -64,8 +64,8 @@ class ArticleBuilder:
     @staticmethod
     def _iter_block_sentences(
             body: BlockSentenceBase,
-            owner_location: FullLocation,
-    ) -> Iterator[tuple[Sentence, FullLocation]]:
+            owner_location: AbsoluteArticleLocation,
+    ) -> Iterator[tuple[Sentence, AbsoluteArticleLocation]]:
         """Plain / Column の違いを隠して、BlockSentenceBase 内の Sentence を返す。"""
         if isinstance(body, PlainBlockSentence):
             for sentence in body.sentences:

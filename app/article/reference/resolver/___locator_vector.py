@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Tuple
 
 from app.article.constants.markers import ReferenceMarker
-from app.article.models.article_loc import FullLocation
+from app.article.models.article_loc import AbsoluteArticleLocation
 from app.article.reference.resolver.token import TokenGroup
 
 
@@ -32,7 +32,7 @@ class LocatorVector:
             path[index] = token.locator_value
         return cls(path=tuple(path))
 
-    def merge_base_location(self, base_location: FullLocation) -> "LocatorVector":
+    def merge_base_location(self, base_location: AbsoluteArticleLocation) -> "LocatorVector":
         """
         base_location.path とこの LocatorVector.path を合成し、より具体化した LocatorVector を返す。
 

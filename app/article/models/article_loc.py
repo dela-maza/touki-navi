@@ -5,9 +5,12 @@ from app.article.constants.enums import LawType, ArticleDepth
 
 
 @dataclass(frozen=True)
-class ArticleLocation:
+class ArticleInnerLocation:
     """
-    一条の中の「相対住所」。
+    一条の中の4次元座標。
+
+    法典・条番号を持たないため、単体では参照先を辿れない。
+    LawType と article_num を merge することで AbsoluteArticleLocation になる。
     """
     path: Tuple[str, str, str, str] = ("0", "0", "0", "0")
 
@@ -30,7 +33,7 @@ class ArticleLocation:
         # その index プロパティ（0〜3）を使って tuple から値を取り出す
         return self.path[depth.index]
 
-    def set_at(self, depth: ArticleDepth, val: str) -> "ArticleLocation":
+    def set_at(self, depth: ArticleDepth, val: str) -> "ArticleInnerLocation":
         path_list: list[str] = list(self.path)  # tuple -> list
         target_idx: int = depth.index
         path_list[target_idx] = str(val)  # 確実に文字列として代入
@@ -38,7 +41,19 @@ class ArticleLocation:
         # 以降のリセット
         for i in range(target_idx + 1, len(path_list)):
             path_list[i] = "0"
-        return ArticleLocation(path=tuple(path_list))
+        return ArticleInnerLocation(path=tuple(path_list))
+
+    def merge(self, law_type: LawType, article_num: str) -> "AbsoluteArticleLocation":
+        """
+        法典・条番号を足して、6次元の絶対座標にする。
+
+        ArticleInnerLocation は条内座標なので、この merge は upgrade に近い。
+        """
+        return AbsoluteArticleLocation(
+            law_type=law_type,
+            article_num=article_num,
+            inner_loc=self,
+        )
 
     @property
     def addr(self) -> str:
@@ -47,36 +62,42 @@ class ArticleLocation:
 
 
 @dataclass(frozen=True, init=False)
-class FullLocation:
+class AbsoluteArticleLocation:
+    """
+    法典・条番号・条内位置をすべて含む6次元の絶対座標。
+
+    これ単体で条文要素を辿れる location である。
+    """
+
     path: Tuple[str, str, str, str, str, str]
 
     def __init__(
             self,
             law_type: LawType | None = None,
             article_num: str | None = None,
-            relative_loc: ArticleLocation | None = None,
+            inner_loc: ArticleInnerLocation | None = None,
             path: Tuple[str, str, str, str, str, str] | None = None,
     ):
         if path is not None:
             if len(path) != 6:
-                raise ValueError(f"FullLocation.path must have 6 elements: {path}")
+                raise ValueError(f"AbsoluteArticleLocation.path must have 6 elements: {path}")
             object.__setattr__(self, "path", tuple(str(cell) for cell in path))
             return
 
         if law_type is None or article_num is None:
-            raise ValueError("FullLocation requires path or law_type and article_num")
+            raise ValueError("AbsoluteArticleLocation requires path or law_type and article_num")
 
-        relative_path = relative_loc.path if relative_loc else ArticleLocation().path
+        inner_path = inner_loc.path if inner_loc else ArticleInnerLocation().path
         object.__setattr__(
             self,
             "path",
             (
                 law_type.short_name,
                 str(article_num),
-                relative_path[0],
-                relative_path[1],
-                relative_path[2],
-                relative_path[3],
+                inner_path[0],
+                inner_path[1],
+                inner_path[2],
+                inner_path[3],
             )
         )
 
@@ -89,11 +110,11 @@ class FullLocation:
         return self.path[1]
 
     @property
-    def relative_loc(self) -> ArticleLocation:
-        return ArticleLocation(self.path[2:])
+    def inner_loc(self) -> ArticleInnerLocation:
+        return ArticleInnerLocation(self.path[2:])
 
     # --- 状態遷移メソッド ---
-    def update_law(self, new_law: LawType | str) -> "FullLocation":
+    def update_law(self, new_law: LawType | str) -> "AbsoluteArticleLocation":
         """
         law_typeが変わった場合
         article_num以下をリセット
@@ -103,20 +124,20 @@ class FullLocation:
         else:
             law_type = new_law
 
-        return FullLocation(path=(law_type.short_name, "0", "0", "0", "0", "0"))
+        return AbsoluteArticleLocation(path=(law_type.short_name, "0", "0", "0", "0", "0"))
 
-    def update_article(self, num_str: str) -> "FullLocation":
+    def update_article(self, num_str: str) -> "AbsoluteArticleLocation":
         """
         条が切り替わった場合
         項以下をリセット
         """
-        return FullLocation(path=(self.path[0], str(num_str), "0", "0", "0", "0"))
+        return AbsoluteArticleLocation(path=(self.path[0], str(num_str), "0", "0", "0", "0"))
 
-    def update_relative(self, depth: ArticleDepth, val: str) -> "FullLocation":
-        """項・号・目が切り替わった場合（ArticleLocationのロジックを使用）"""
+    def update_inner_location(self, depth: ArticleDepth, val: str) -> "AbsoluteArticleLocation":
+        """項・号・目が切り替わった場合（ArticleInnerLocationのロジックを使用）"""
         # 既存の set_at をそのまま活用
-        new_relative = self.relative_loc.set_at(depth, val)
-        return FullLocation(path=(self.path[0], self.path[1], *new_relative.path))
+        new_inner_loc = self.inner_loc.set_at(depth, val)
+        return AbsoluteArticleLocation(path=(self.path[0], self.path[1], *new_inner_loc.path))
 
     @property
     def addr(self) -> str:
@@ -137,7 +158,7 @@ class FullLocation:
             "law_short_name": self.law_type.short_name,
             "law_name_jp": self.law_type.name_jp,
             "article_num": self.article_num,
-            "relative_loc": self.relative_loc.addr,
+            "inner_loc": self.inner_loc.addr,
             "addr": self.addr,
             "id_attr": self.id_attr
         }

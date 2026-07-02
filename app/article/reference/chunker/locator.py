@@ -19,6 +19,7 @@ class ReferenceLocator:
         value = to_hankaku(arabic_part)
 
         if arabic_part == "同法":
+            # 前法・次法というshiftは観念できない。なのでshiftではなくlocationである
             return f"[l={ReferenceMarker.SAME_LAW}]"
 
         law = cls._find_law_type(arabic_part)
@@ -46,10 +47,12 @@ class ReferenceLocator:
         if value in relative_shifts:
             return f"[{relative_shifts[value]}]"
 
+        # 第○条、第○条の○
         article_match = re.fullmatch(r"第([0-9]+)条(?:の([0-9]+))*", value)
         if article_match:
             return f"[a={cls._unit_number_to_id(value)}]"
 
+        # 項、号、イロハ、（１）
         number_match = re.search(r"[0-9]+", value)
         if "項" in value and number_match:
             return f"[p={number_match.group(0)}]"

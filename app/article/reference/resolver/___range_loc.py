@@ -1,6 +1,6 @@
 # app/article/reference/resolver/range_loc.py
 from app.article.constants.enums import ArticleDepth
-from app.article.models.article_loc import FullLocation
+from app.article.models.article_loc import AbsoluteArticleLocation
 from app.article.models.index import ArticleElementLocationIndex, ArticleIndex
 from app.article.reference.resolver.token import RangeToken, ShiftRangeToken
 
@@ -21,13 +21,13 @@ class RangeLocationResolver:
         self.article_index = article_index
         self.element_index = element_index
 
-    def resolve_locations(self, location: FullLocation, token: RangeToken | ShiftRangeToken) -> list[FullLocation]:
+    def resolve_locations(self, location: AbsoluteArticleLocation, token: RangeToken | ShiftRangeToken) -> list[AbsoluteArticleLocation]:
         """RangeToken の locator_key に応じて、条単位または Article 内部要素の範囲を返す。"""
         if token.locator_key == "a":
             return self._apply_article_range(location, token)
         return self._apply_element_range(location, token)
 
-    def _apply_article_range(self, location: FullLocation, token: RangeToken | ShiftRangeToken) -> list[FullLocation]:
+    def _apply_article_range(self, location: AbsoluteArticleLocation, token: RangeToken | ShiftRangeToken) -> list[AbsoluteArticleLocation]:
         """前○条を複数 location として返す。"""
         if token.range_value == RangeToken.EACH:
             raise ValueError(f"article range requires numeric value: {token.raw}")
@@ -38,7 +38,7 @@ class RangeLocationResolver:
         target_ids = self.article_index.get_offset_ids(location.article_num, token.range_value, abs(token.range_value))
         return [location.update_article(target_id) for target_id in target_ids]
 
-    def _apply_element_range(self, location: FullLocation, token: RangeToken | ShiftRangeToken) -> list[FullLocation]:
+    def _apply_element_range(self, location: AbsoluteArticleLocation, token: RangeToken | ShiftRangeToken) -> list[AbsoluteArticleLocation]:
         """前○項・前○号・各号など、Article 内部要素の範囲を返す。"""
         if self.element_index is None:
             raise ValueError(f"ArticleElementLocationIndex is required for element range: {location.addr}")
@@ -64,13 +64,13 @@ class RangeLocationResolver:
 
     @staticmethod
     def _find_sibling_index(
-            siblings: list[FullLocation],
-            location: FullLocation,
+            siblings: list[AbsoluteArticleLocation],
+            location: AbsoluteArticleLocation,
             depth: ArticleDepth,
     ) -> int | None:
         """兄弟 location 一覧の中から、指定 depth の値が一致する位置を探す。"""
-        target_val = location.relative_loc.get_path_index(depth)
+        target_val = location.down_merge.get_path_index(depth)
         for idx, sibling in enumerate(siblings):
-            if sibling.relative_loc.get_path_index(depth) == target_val:
+            if sibling.down_merge.get_path_index(depth) == target_val:
                 return idx
         return None

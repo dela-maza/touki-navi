@@ -3,6 +3,7 @@ import logging
 from dataclasses import dataclass
 
 from app.article.constants.markers import ReferenceMarker
+from app.article.reference.resolver.locator_vector import LocatorVector
 
 logger = logging.getLogger(__name__)
 
@@ -11,8 +12,8 @@ logger = logging.getLogger(__name__)
 class Token:
     """locator の1セルを表す最小単位。"""
 
-    locator_key: str
-    locator_value: str
+    locator_key: str  # p
+    locator_value: str  # 3*
 
     @classmethod
     def create_object(cls, locator_cell: str) -> "Token":
@@ -79,6 +80,16 @@ class TokenGroup:
     def shift_range_tokens(self) -> list[Token]:
         return [token for token in self.tokens if token.is_shift_range]
 
+    @property
+    def relative_vector(self) -> LocatorVector:
+        """
+        TokenGroup を6次元に配置した相対ベクトルを返す。
+
+        l / a のような絶対指定も、base location に対する上書き成分としてここに入る。
+        どの base location と合成するかは SentenceReferenceGroup 側の責務である。
+        """
+        return LocatorVector.from_tokens(self.tokens)
+
     def _validate_token_order(self) -> None:
         """
         Token の並びとして異様なものを警告する。
@@ -88,6 +99,7 @@ class TokenGroup:
         """
         for index, token in enumerate(self.tokens):
             if token.is_range_like and index != len(self.tokens) - 1:
+                # '*'は、tokensの末尾要素にしか付かない
                 logger.warning(
                     "range token should be last in TokenGroup: tokens=%s",
                     [t.locator_value for t in self.tokens],
@@ -95,6 +107,7 @@ class TokenGroup:
 
         range_like_count = len([token for token in self.tokens if token.is_range_like])
         if range_like_count > 1:
+            # '*'は、tokensに２以上は付かない
             logger.warning(
                 "multiple range tokens may expand locations repeatedly: tokens=%s",
                 [t.locator_value for t in self.tokens],

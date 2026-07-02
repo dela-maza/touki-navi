@@ -1,6 +1,6 @@
 # app/article/reference/resolver/shift_loc.py
 from app.article.constants.enums import ArticleDepth
-from app.article.models.article_loc import FullLocation
+from app.article.models.article_loc import AbsoluteArticleLocation
 from app.article.models.index import ArticleElementLocationIndex, ArticleIndex
 from app.article.reference.resolver.token import ShiftToken
 
@@ -21,13 +21,13 @@ class ShiftLocationResolver:
         self.article_index = article_index
         self.element_index = element_index
 
-    def resolve_locations(self, location: FullLocation, token: ShiftToken) -> list[FullLocation]:
+    def resolve_locations(self, location: AbsoluteArticleLocation, token: ShiftToken) -> list[AbsoluteArticleLocation]:
         """ShiftToken の locator_key に応じて、条単位または Article 内部要素の shift を解決する。"""
         if token.locator_key == "a":
             return self._apply_article_shift(location, token)
         return self._apply_element_shift(location, token)
 
-    def _apply_article_shift(self, location: FullLocation, token: ShiftToken) -> list[FullLocation]:
+    def _apply_article_shift(self, location: AbsoluteArticleLocation, token: ShiftToken) -> list[AbsoluteArticleLocation]:
         """前条・同条・次条・前○条を解決する。"""
         if token.offset_num == 0:
             return [location.update_article(location.article_num)]
@@ -41,7 +41,7 @@ class ShiftLocationResolver:
         target_ids = self.article_index.get_offset_ids(location.article_num, token.offset_num, length=1)
         return [location.update_article(target_id) for target_id in target_ids]
 
-    def _apply_element_shift(self, location: FullLocation, token: ShiftToken) -> list[FullLocation]:
+    def _apply_element_shift(self, location: AbsoluteArticleLocation, token: ShiftToken) -> list[AbsoluteArticleLocation]:
         """前項・前号・各号など、Article 内部要素の shift を解決する。"""
         if self.element_index is None:
             raise ValueError(f"ArticleElementLocationIndex is required for element shift: {location.addr}")
@@ -64,13 +64,13 @@ class ShiftLocationResolver:
 
     @staticmethod
     def _find_sibling_index(
-            siblings: list[FullLocation],
-            location: FullLocation,
+            siblings: list[AbsoluteArticleLocation],
+            location: AbsoluteArticleLocation,
             depth: ArticleDepth,
     ) -> int | None:
         """兄弟 location 一覧の中から、指定 depth の値が一致する位置を探す。"""
-        target_val = location.relative_loc.get_path_index(depth)
+        target_val = location.down_merge.get_path_index(depth)
         for idx, sibling in enumerate(siblings):
-            if sibling.relative_loc.get_path_index(depth) == target_val:
+            if sibling.down_merge.get_path_index(depth) == target_val:
                 return idx
         return None

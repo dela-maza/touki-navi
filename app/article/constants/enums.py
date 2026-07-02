@@ -105,49 +105,6 @@ class TocDepth(Enum):
         raise KeyError(locator_key)
 
 
-class InlineMarkKind(Enum):
-    """Sentence 内に埋め込む、location token ではない半角ASCII mark の種類。"""
-
-    # 例: <q=ただし書>
-    QUALIFIER = "q"
-    # 例: <h=law:kai>, <h=part:本則>
-    HINT = "h"
-    # 例: <c=及び>
-    CONNECTOR = "c"
-
-
-class QualifierMark(Enum):
-    """location に近い修飾情報。参照先の一部を限定する。"""
-
-    PROVISO = "ただし書"
-    MAIN_TEXT = "本文"
-    FIRST_PART = "前段"
-    LATTER_PART = "後段"
-
-
-class HintMark(Enum):
-    """UI / semantic hint 用の mark key。location 解決そのものからは距離がある。"""
-
-    # 例: <h=law:kai>
-    LAW = "law"
-    # 例: <h=part:本則>, <h=part:附則>
-    PART = "part"
-    # 例: <h=term:登記簿>
-    TERM = "term"
-
-
-class ConnectorMark(Enum):
-    """Reference 同士の連鎖を維持しうる接続語。"""
-
-    COMMA = "、"
-    OYOBI = "及び"
-    NARABINI = "並びに"
-    MATAWA = "又は"
-    MOSHIKUWA = "若しくは"
-    KARA = "から"
-    MADE = "まで"
-
-
 class SentenceType(Enum):
     SENTENCE = 0
     COLUMN = 1

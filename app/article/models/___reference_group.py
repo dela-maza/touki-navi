@@ -2,8 +2,8 @@
 import re
 from dataclasses import dataclass, field
 
-from app.article.constants.enums import ConnectorMark, HintMark, InlineMarkKind
-from app.article.models.article_loc import FullLocation
+from app.article.constants.inline_marks import CONNECTOR_TEXTS, HINT_KEY_LAW, INLINE_MARK_HINT
+from app.article.models.article_loc import AbsoluteArticleLocation
 from app.article.models.reference import Reference
 from app.article.models.sentence import Sentence
 from app.article.reference.resolver.locator_vector import LocatorVector
@@ -21,7 +21,7 @@ class SentenceReferenceGroup:
     """
 
     sentence: Sentence
-    this_sentence_location: FullLocation
+    this_sentence_location: AbsoluteArticleLocation
     references: list[Reference] = field(default_factory=list)
 
     MARK_PATTERN = re.compile(r"[{][^{}]*[}]")
@@ -30,7 +30,7 @@ class SentenceReferenceGroup:
     def create_object(
             cls,
             sentence: Sentence,
-            this_sentence_location: FullLocation,
+            this_sentence_location: AbsoluteArticleLocation,
     ) -> "SentenceReferenceGroup":
         """Sentence.marked_text から Reference を出現順に生成する。"""
         if not sentence.marked_text:
@@ -117,7 +117,7 @@ class SentenceReferenceGroup:
         if vector.has_law_or_article:
             return "absolute"
 
-        if vector.is_plain_part_only and active_ref_exists:
+        if vector.is_plain_inner_only and active_ref_exists:
             return "active_ref"
 
         if vector.has_shift:
@@ -129,13 +129,13 @@ class SentenceReferenceGroup:
     def _create_semantic_mark_text(vector: LocatorVector) -> str | None:
         """location 参照ではない semantic mark に落とせる場合、その mark 文字列を返す。"""
         if vector.is_law_only:
-            return f"<{InlineMarkKind.HINT.value}={HintMark.LAW.value}:{vector.law_cell}>"
+            return f"<{INLINE_MARK_HINT}={HINT_KEY_LAW}:{vector.law_cell}>"
         return None
 
     @classmethod
     def _is_connector_only_gap(cls, gap_text: str) -> bool:
         """Reference 同士の隙間が、参照連鎖を維持できる接続語だけかを返す。"""
         gap = gap_text.strip()
-        for connector in sorted(ConnectorMark, key=lambda mark: len(mark.value), reverse=True):
-            gap = gap.replace(connector.value, "")
+        for connector in CONNECTOR_TEXTS:
+            gap = gap.replace(connector, "")
         return not gap.strip()
